@@ -81,13 +81,21 @@ Google Translate API がサポートする全ての言語に対応：
 
 ### 環境変数
 
-| 変数名                | 必須 | 説明                               | デフォルト |
-| --------------------- | ---- | ---------------------------------- | ---------- |
-| `GAS_URL`             | ✅   | Google Apps Script 翻訳 API の URL | -          |
-| `PORT`                | ❌   | サーバーポート                     | `3000`     |
-| `HOST`                | ❌   | サーバーホスト                     | `0.0.0.0`  |
-| `DEFAULT_SOURCE_LANG` | ❌   | デフォルトソース言語               | `auto`     |
-| `DEFAULT_TARGET_LANG` | ❌   | デフォルトターゲット言語           | `ja`       |
+| 変数名                             | 必須 | 説明                               | デフォルト |
+| ---------------------------------- | ---- | ---------------------------------- | ---------- |
+| `GAS_URL`                          | ✅   | Google Apps Script 翻訳 API の URL | -          |
+| `PORT`                             | ❌   | サーバーポート                     | `3000`     |
+| `HOST`                             | ❌   | サーバーホスト                     | `0.0.0.0`  |
+| `DEFAULT_SOURCE_LANG`              | ❌   | デフォルトソース言語               | `auto`     |
+| `DEFAULT_TARGET_LANG`              | ❌   | デフォルトターゲット言語           | `ja`       |
+| `DEFAULT_EXCLUDE_FEED_TITLE`       | ❌   | RSS フィードタイトルを翻訳しない   | `true`     |
+| `DEFAULT_EXCLUDE_ITEM_TITLE`       | ❌   | RSS 記事タイトルを翻訳しない       | `false`    |
+| `TRANSLATION_CACHE_ENABLED`        | ❌   | 翻訳キャッシュを有効にする         | `true`     |
+| `TRANSLATION_CACHE_TTL_MS`         | ❌   | 翻訳キャッシュの TTL (ms)          | `21600000` |
+| `TRANSLATION_CACHE_MAX_ITEMS`      | ❌   | 翻訳キャッシュの最大件数           | `1000`     |
+| `CDN_CACHE_ENABLED`                | ❌   | CDN キャッシュを有効にする         | `true`     |
+| `CDN_CACHE_S_MAXAGE`               | ❌   | CDN キャッシュの TTL (秒)          | `300`      |
+| `CDN_CACHE_STALE_WHILE_REVALIDATE` | ❌   | CDN 再検証の猶予時間 (秒)          | `60`       |
 
 ### 開発コマンド
 

@@ -1,3 +1,4 @@
+/** アプリケーション設定。 */
 export interface Config {
   gasUrl: string
   port?: number
@@ -6,8 +7,25 @@ export interface Config {
   defaultTargetLang?: string
   defaultExcludeFeedTitle?: boolean
   defaultExcludeItemTitle?: boolean
+  translationCache: TranslationCacheConfig
+  cacheControl: CacheControlConfig
 }
 
+/** 翻訳キャッシュ設定。 */
+export interface TranslationCacheConfig {
+  enabled: boolean
+  ttlMs: number
+  maxItems: number
+}
+
+/** CDN キャッシュ設定。 */
+export interface CacheControlConfig {
+  enabled: boolean
+  sMaxAge: number
+  staleWhileRevalidate: number
+}
+
+/** 翻訳 API のリクエストパラメータ。 */
 export interface TranslateRequest {
   url: string
   sourceLang?: string
@@ -16,12 +34,14 @@ export interface TranslateRequest {
   excludeItemTitle?: string
 }
 
+/** 翻訳 API のレスポンス。 */
 export interface TranslateResponse {
   status: 'success' | 'error'
   data?: string
   error?: string
 }
 
+/** GAS 翻訳リクエスト。 */
 export interface GASTranslateRequest {
   before: string
   after: string
@@ -29,15 +49,18 @@ export interface GASTranslateRequest {
   mode: 'html'
 }
 
+/** GAS 翻訳レスポンス。 */
 export interface GASTranslateResponse {
   text: string
 }
 
+/** バッチ翻訳の入力項目。 */
 export interface BatchTranslateItem {
   id: string
   text: string
 }
 
+/** GAS バッチ翻訳リクエスト。 */
 export interface GASBatchTranslateRequest {
   batch: true
   before: string
@@ -46,6 +69,7 @@ export interface GASBatchTranslateRequest {
   mode: 'html'
 }
 
+/** バッチ翻訳の結果。 */
 export interface BatchTranslateResult {
   id: string
   original: string
@@ -54,6 +78,7 @@ export interface BatchTranslateResult {
   error?: string
 }
 
+/** GAS バッチ翻訳レスポンス。 */
 export interface GASBatchTranslateResponse {
   status: boolean
   results: BatchTranslateResult[]
@@ -62,6 +87,7 @@ export interface GASBatchTranslateResponse {
   executionTime: number
 }
 
+/** RSS アイテム。 */
 export interface RSSItem {
   title?: string
   link?: string
@@ -75,6 +101,7 @@ export interface RSSItem {
   [key: string]: unknown
 }
 
+/** RSS フィード。 */
 export interface RSSFeed {
   title?: string
   link?: string
@@ -85,6 +112,7 @@ export interface RSSFeed {
   [key: string]: unknown
 }
 
+/** RSS XML 生成用のオブジェクト。 */
 export interface RSSObject {
   rss: {
     $: {

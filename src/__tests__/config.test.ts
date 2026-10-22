@@ -23,6 +23,16 @@ describe('loadConfig', () => {
     expect(config.defaultSourceLang).toBe('auto')
     expect(config.defaultTargetLang).toBe('ja')
     expect(config.defaultExcludeFeedTitle).toBe(true)
+    expect(config.translationCache).toEqual({
+      enabled: true,
+      ttlMs: 21_600_000,
+      maxItems: 1000,
+    })
+    expect(config.cacheControl).toEqual({
+      enabled: true,
+      sMaxAge: 300,
+      staleWhileRevalidate: 60,
+    })
   })
 
   it('should throw error when GAS_URL is not set', () => {
@@ -40,6 +50,12 @@ describe('loadConfig', () => {
     process.env.DEFAULT_SOURCE_LANG = 'en'
     process.env.DEFAULT_TARGET_LANG = 'ko'
     process.env.DEFAULT_EXCLUDE_FEED_TITLE = 'false'
+    process.env.TRANSLATION_CACHE_ENABLED = 'false'
+    process.env.TRANSLATION_CACHE_TTL_MS = '7200000'
+    process.env.TRANSLATION_CACHE_MAX_ITEMS = '500'
+    process.env.CDN_CACHE_ENABLED = 'false'
+    process.env.CDN_CACHE_S_MAXAGE = '120'
+    process.env.CDN_CACHE_STALE_WHILE_REVALIDATE = '30'
 
     const config = loadConfig()
 
@@ -48,6 +64,16 @@ describe('loadConfig', () => {
     expect(config.defaultSourceLang).toBe('en')
     expect(config.defaultTargetLang).toBe('ko')
     expect(config.defaultExcludeFeedTitle).toBe(false)
+    expect(config.translationCache).toEqual({
+      enabled: false,
+      ttlMs: 7_200_000,
+      maxItems: 500,
+    })
+    expect(config.cacheControl).toEqual({
+      enabled: false,
+      sMaxAge: 120,
+      staleWhileRevalidate: 30,
+    })
   })
 
   it('should handle invalid PORT environment variable', () => {
@@ -65,6 +91,10 @@ describe('loadConfig', () => {
     process.env.HOST = ''
     process.env.DEFAULT_SOURCE_LANG = ''
     process.env.DEFAULT_TARGET_LANG = ''
+    process.env.TRANSLATION_CACHE_TTL_MS = ''
+    process.env.TRANSLATION_CACHE_MAX_ITEMS = ''
+    process.env.CDN_CACHE_S_MAXAGE = ''
+    process.env.CDN_CACHE_STALE_WHILE_REVALIDATE = ''
 
     const config = loadConfig()
 
@@ -72,6 +102,10 @@ describe('loadConfig', () => {
     expect(config.host).toBe('') // empty string, not fallback
     expect(config.defaultSourceLang).toBe('') // empty string, not fallback
     expect(config.defaultTargetLang).toBe('') // empty string, not fallback
+    expect(config.translationCache.ttlMs).toBeNaN()
+    expect(config.translationCache.maxItems).toBeNaN()
+    expect(config.cacheControl.sMaxAge).toBeNaN()
+    expect(config.cacheControl.staleWhileRevalidate).toBeNaN()
   })
 
   it('should handle zero PORT value', () => {

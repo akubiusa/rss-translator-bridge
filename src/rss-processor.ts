@@ -8,21 +8,29 @@ import {
   UnsafeUrlError,
 } from './safe-fetch.js'
 import { Translator } from './translator.js'
-import { RSSFeed, RSSItem, RSSObject, BatchTranslateItem } from './types.js'
+import {
+  RSSFeed,
+  RSSItem,
+  RSSObject,
+  BatchTranslateItem,
+  TranslationCacheConfig,
+} from './types.js'
 
 export class RSSProcessor {
   private parser: RSSParser
   private translator: Translator
 
-  constructor(gasUrl: string) {
+  /** RSS 処理クラスを初期化する。 */
+  constructor(gasUrl: string, cacheConfig?: TranslationCacheConfig) {
     this.parser = new RSSParser({
       customFields: {
         item: [['content:encoded', 'contentEncoded']],
       },
     })
-    this.translator = new Translator(gasUrl)
+    this.translator = new Translator(gasUrl, cacheConfig)
   }
 
+  /** RSS フィードを翻訳し、XML として返す。 */
   async processRSSFeed(
     feedUrl: string,
     sourceLang: string,
@@ -132,6 +140,7 @@ export class RSSProcessor {
     }
   }
 
+  /** RSS オブジェクトを XML 文字列へ変換する。 */
   private feedToXML(feed: RSSParser.Output<RSSItem>): string {
     const feedData = feed as RSSFeed
     const rssObject: RSSObject = {

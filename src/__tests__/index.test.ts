@@ -1,7 +1,8 @@
 import fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { loadConfig } from '../config'
 import { RSSProcessor } from '../rss-processor'
-import { TranslateRequest } from '../types'
+import { Config, TranslateRequest } from '../types'
+import { buildCacheControlHeader } from '../cache-control'
 
 jest.mock('../config')
 jest.mock('../rss-processor')
@@ -13,32 +14,17 @@ describe('RSS Translator Bridge API', () => {
   let app: FastifyInstance
   let mockRSSProcessorInstance: jest.Mocked<RSSProcessor>
 
-  beforeEach(async () => {
-    mockLoadConfig.mockReturnValue({
-      gasUrl: 'https://example.com/gas',
-      port: 3000,
-      host: '0.0.0.0',
-      defaultSourceLang: 'auto',
-      defaultTargetLang: 'ja',
-      defaultExcludeFeedTitle: true,
-      defaultExcludeItemTitle: false,
-    })
+  const createTestApp = async (config: Config) => {
+    const testApp = fastify({ logger: false })
+    await testApp.register(import('@fastify/cors'), { origin: true })
 
-    mockRSSProcessorInstance = {
-      processRSSFeed: jest.fn(),
-    } as any
-
-    mockRSSProcessor.mockImplementation(() => mockRSSProcessorInstance)
-
-    // Create a simplified test app with same logic
-    const config = mockLoadConfig()
-    app = fastify({ logger: false })
-    await app.register(import('@fastify/cors'), { origin: true })
-
-    const rssProcessor = new RSSProcessor(config.gasUrl)
+    const rssProcessor = new RSSProcessor(
+      config.gasUrl,
+      config.translationCache
+    )
 
     // Health check endpoint
-    app.get('/health', () => {
+    testApp.get('/health', () => {
       return { status: 'ok', timestamp: new Date().toISOString() }
     })
 
@@ -89,6 +75,7 @@ describe('RSS Translator Bridge API', () => {
         return await reply
           .code(200)
           .header('Content-Type', 'application/rss+xml; charset=utf-8')
+          .header('Cache-Control', buildCacheControlHeader(config.cacheControl))
           .send(translatedRSS)
       } catch {
         return await reply.code(500).send({
@@ -99,9 +86,41 @@ describe('RSS Translator Bridge API', () => {
     }
 
     // Register API route
-    app.get('/api', translateHandler)
+    testApp.get('/api', translateHandler)
 
-    await app.ready()
+    await testApp.ready()
+    return testApp
+  }
+
+  beforeEach(async () => {
+    mockLoadConfig.mockReturnValue({
+      gasUrl: 'https://example.com/gas',
+      port: 3000,
+      host: '0.0.0.0',
+      defaultSourceLang: 'auto',
+      defaultTargetLang: 'ja',
+      defaultExcludeFeedTitle: true,
+      defaultExcludeItemTitle: false,
+      translationCache: {
+        enabled: true,
+        ttlMs: 21_600_000,
+        maxItems: 1000,
+      },
+      cacheControl: {
+        enabled: true,
+        sMaxAge: 300,
+        staleWhileRevalidate: 60,
+      },
+    })
+
+    mockRSSProcessorInstance = {
+      processRSSFeed: jest.fn(),
+    } as any
+
+    mockRSSProcessor.mockImplementation(() => mockRSSProcessorInstance)
+
+    const config = mockLoadConfig()
+    app = await createTestApp(config)
     jest.clearAllMocks()
   })
 
@@ -162,6 +181,9 @@ describe('RSS Translator Bridge API', () => {
       expect(response.headers['content-type']).toBe(
         'application/rss+xml; charset=utf-8'
       )
+      expect(response.headers['cache-control']).toBe(
+        buildCacheControlHeader(mockLoadConfig().cacheControl)
+      )
       expect(response.body).toBe(mockXML)
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockRSSProcessorInstance.processRSSFeed).toHaveBeenCalledWith(
@@ -191,6 +213,40 @@ describe('RSS Translator Bridge API', () => {
         true,
         false
       )
+    })
+
+    it('should return no-store when CDN cache is disabled', async () => {
+      const mockXML = '<rss>cache disabled</rss>'
+      mockRSSProcessorInstance.processRSSFeed.mockResolvedValue(mockXML)
+      await app.close()
+      mockLoadConfig.mockReturnValue({
+        gasUrl: 'https://example.com/gas',
+        port: 3000,
+        host: '0.0.0.0',
+        defaultSourceLang: 'auto',
+        defaultTargetLang: 'ja',
+        defaultExcludeFeedTitle: true,
+        defaultExcludeItemTitle: false,
+        translationCache: {
+          enabled: true,
+          ttlMs: 21_600_000,
+          maxItems: 1000,
+        },
+        cacheControl: {
+          enabled: false,
+          sMaxAge: 300,
+          staleWhileRevalidate: 60,
+        },
+      })
+      app = await createTestApp(mockLoadConfig())
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api?url=https://example.com/feed.xml',
+      })
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers['cache-control']).toBe('no-store')
     })
 
     it('should return 500 when RSS processing fails', async () => {

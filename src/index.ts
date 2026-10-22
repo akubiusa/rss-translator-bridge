@@ -6,10 +6,12 @@ import { loadConfig } from './config.js'
 const currentFilename = fileURLToPath(import.meta.url)
 const currentDirname = path.dirname(currentFilename)
 
+/** Fastify アプリケーションを生成する。 */
 export async function getApp() {
   return buildApp({ staticRoot: path.join(currentDirname, '../public') })
 }
 
+/** サーバーを起動する。 */
 async function start() {
   const config = loadConfig()
   const app = await getApp()

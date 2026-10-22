@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import staticPlugin from '@fastify/static'
 import { loadConfig } from './config.js'
 import { RSSProcessor } from './rss-processor.js'
+import { buildCacheControlHeader } from './cache-control.js'
 import {
   FetchTimeoutError,
   HttpStatusError,
@@ -88,7 +89,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     })
   }
 
-  const rssProcessor = new RSSProcessor(config.gasUrl)
+  const rssProcessor = new RSSProcessor(config.gasUrl, config.translationCache)
 
   // 拒否した宛先の IP は応答に含めず、サーバー側のログにだけ残す
   const logBlockedDestination = (error: unknown) => {
@@ -138,6 +139,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   })
 
   // Main RSS translation endpoint handler
+  /** RSS 翻訳 API を処理する。 */
   const translateHandler = async (
     request: FastifyRequest<{ Querystring: TranslateRequest }>,
     reply: FastifyReply
@@ -183,6 +185,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       return await reply
         .code(200)
         .header('Content-Type', 'application/rss+xml; charset=utf-8')
+        .header('Cache-Control', buildCacheControlHeader(config.cacheControl))
         .send(translatedRSS)
     } catch (error) {
       const httpError = toHttpError(error)
