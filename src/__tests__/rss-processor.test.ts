@@ -1,12 +1,27 @@
 import { RSSProcessor } from '../rss-processor'
 import RSSParser from 'rss-parser'
 import { Translator } from '../translator'
+import {
+  FetchTimeoutError,
+  RedirectError,
+  ResponseTooLargeError,
+  safeFetchText,
+  UnsafeUrlError,
+} from '../safe-fetch'
 
 jest.mock('rss-parser')
 jest.mock('../translator')
+// エラークラスは本物を使うため、取得関数だけを差し替える
+jest.mock('../safe-fetch', () => ({
+  ...jest.requireActual<typeof import('../safe-fetch')>('../safe-fetch'),
+  safeFetchText: jest.fn(),
+}))
 
 const mockRSSParser = RSSParser as jest.MockedClass<typeof RSSParser>
 const mockTranslator = Translator as jest.MockedClass<typeof Translator>
+const mockSafeFetchText = safeFetchText as jest.MockedFunction<
+  typeof safeFetchText
+>
 
 const createMockFeed = () => ({
   title: 'Test Feed',
@@ -41,7 +56,7 @@ describe('RSSProcessor', () => {
 
   beforeEach(() => {
     mockParserInstance = {
-      parseURL: jest.fn(),
+      parseString: jest.fn(),
     } as any
     mockTranslatorInstance = {
       translateBatch: jest.fn(),
@@ -52,11 +67,12 @@ describe('RSSProcessor', () => {
 
     rssProcessor = new RSSProcessor('https://example.com/gas')
     jest.clearAllMocks()
+    mockSafeFetchText.mockResolvedValue('<rss>fetched body</rss>')
   })
 
   describe('processRSSFeed', () => {
     it('should process RSS feed successfully with translations', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       const mockTranslations = new Map([
         ['feed-title', 'テストフィード'],
@@ -80,9 +96,12 @@ describe('RSSProcessor', () => {
       expect(result).toContain('テスト説明')
       expect(result).toContain('アイテム1タイトル')
       expect(result).toContain('アイテム2タイトル')
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mockParserInstance.parseURL).toHaveBeenCalledWith(
+      expect(mockSafeFetchText).toHaveBeenCalledWith(
         'https://example.com/feed.xml'
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockParserInstance.parseString).toHaveBeenCalledWith(
+        '<rss>fetched body</rss>'
       )
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
@@ -105,7 +124,7 @@ describe('RSSProcessor', () => {
         description: 'Empty Description',
         items: [],
       }
-      mockParserInstance.parseURL.mockResolvedValue(emptyFeed)
+      mockParserInstance.parseString.mockResolvedValue(emptyFeed)
 
       const mockTranslations = new Map([['feed-description', 'エンプティ説明']])
       mockTranslatorInstance.translateBatch.mockResolvedValue(mockTranslations)
@@ -136,7 +155,7 @@ describe('RSSProcessor', () => {
           },
         ],
       }
-      mockParserInstance.parseURL.mockResolvedValue(minimalFeed)
+      mockParserInstance.parseString.mockResolvedValue(minimalFeed)
       mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
 
       const result = await rssProcessor.processRSSFeed(
@@ -167,7 +186,7 @@ describe('RSSProcessor', () => {
           },
         ],
       }
-      mockParserInstance.parseURL.mockResolvedValue(feedWithMultipleContent)
+      mockParserInstance.parseString.mockResolvedValue(feedWithMultipleContent)
       mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
 
       await rssProcessor.processRSSFeed(
@@ -199,7 +218,7 @@ describe('RSSProcessor', () => {
           },
         ],
       }
-      mockParserInstance.parseURL.mockResolvedValue(feedWithDescription)
+      mockParserInstance.parseString.mockResolvedValue(feedWithDescription)
       const mockTranslations = new Map([
         ['item-0-content', 'Description コンテンツ'],
       ])
@@ -239,7 +258,7 @@ describe('RSSProcessor', () => {
           },
         ],
       }
-      mockParserInstance.parseURL.mockResolvedValue(feedWithOnlyDescription)
+      mockParserInstance.parseString.mockResolvedValue(feedWithOnlyDescription)
       const mockTranslations = new Map([
         ['item-0-title', 'Description を持つアイテム'],
         ['item-0-content', '<p>HTML Description コンテンツ</p>'],
@@ -273,7 +292,7 @@ describe('RSSProcessor', () => {
           },
         ],
       }
-      mockParserInstance.parseURL.mockResolvedValue(feedWithBothFields)
+      mockParserInstance.parseString.mockResolvedValue(feedWithBothFields)
       const mockTranslations = new Map([
         ['item-0-title', 'Both Fields を持つアイテム'],
         ['item-0-content', 'Content フィールドテキスト'],
@@ -307,10 +326,52 @@ describe('RSSProcessor', () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
         // no-op
       })
-      mockParserInstance.parseURL.mockRejectedValue(new Error('Invalid RSS'))
+      mockParserInstance.parseString.mockRejectedValue(new Error('Invalid RSS'))
 
       const result = await rssProcessor.processRSSFeed(
         'https://example.com/invalid.xml',
+        'en',
+        'ja'
+      )
+
+      expect(result).toBeNull()
+      consoleSpy.mockRestore()
+    })
+
+    it.each([
+      [
+        'UnsafeUrlError',
+        new UnsafeUrlError('Blocked destination: internal.test'),
+      ],
+      [
+        'FetchTimeoutError',
+        new FetchTimeoutError('Fetch timed out after 5000ms'),
+      ],
+      [
+        'ResponseTooLargeError',
+        new ResponseTooLargeError('Response exceeds 5 bytes: example.com'),
+      ],
+      ['RedirectError', new RedirectError('Too many redirects: example.com')],
+    ])('should rethrow %s from the fetch step', async (_name, fetchError) => {
+      mockSafeFetchText.mockRejectedValue(fetchError)
+
+      await expect(
+        rssProcessor.processRSSFeed('https://example.com/feed.xml', 'en', 'ja')
+      ).rejects.toBe(fetchError)
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockParserInstance.parseString).not.toHaveBeenCalled()
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockTranslatorInstance.translateBatch).not.toHaveBeenCalled()
+    })
+
+    it('should return null when the fetch step fails with another error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+        // no-op
+      })
+      mockSafeFetchText.mockRejectedValue(new Error('connect ECONNREFUSED'))
+
+      const result = await rssProcessor.processRSSFeed(
+        'https://example.com/feed.xml',
         'en',
         'ja'
       )
@@ -323,7 +384,7 @@ describe('RSSProcessor', () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
         // no-op
       })
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
       mockTranslatorInstance.translateBatch.mockRejectedValue(
         new Error('Translation failed')
       )
@@ -339,7 +400,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should handle partial translation failures gracefully', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // Only some translations succeed
       const partialTranslations = new Map([
@@ -366,7 +427,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should exclude feed title translation when excludeFeedTitle is true (default)', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // Note: feed-title should NOT be in the translations since excludeFeedTitle=true
       const mockTranslations = new Map([
@@ -399,7 +460,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should translate feed title when excludeFeedTitle is false', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // All translations available
       const mockTranslations = new Map([
@@ -436,7 +497,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should exclude item title translation when excludeItemTitle is true', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // Note: item titles should NOT be in the translations since excludeItemTitle=true
       const mockTranslations = new Map([
@@ -479,7 +540,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should translate item titles when excludeItemTitle is false (default)', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // All item titles should be in the translations
       const mockTranslations = new Map([
@@ -516,7 +577,7 @@ describe('RSSProcessor', () => {
     })
 
     it('should handle both excludeFeedTitle and excludeItemTitle together', async () => {
-      mockParserInstance.parseURL.mockResolvedValue(createMockFeed())
+      mockParserInstance.parseString.mockResolvedValue(createMockFeed())
 
       // Only content should be translated (no feed title, no item titles)
       const mockTranslations = new Map([
@@ -571,7 +632,7 @@ describe('RSSProcessor', () => {
         ],
       }
 
-      mockParserInstance.parseURL.mockResolvedValue(simpleFeed)
+      mockParserInstance.parseString.mockResolvedValue(simpleFeed)
       mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
 
       const result = await rssProcessor.processRSSFeed(
@@ -607,7 +668,7 @@ describe('RSSProcessor', () => {
         ],
       }
 
-      mockParserInstance.parseURL.mockResolvedValue(feedWithExtras)
+      mockParserInstance.parseString.mockResolvedValue(feedWithExtras)
       mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
 
       const result = await rssProcessor.processRSSFeed(

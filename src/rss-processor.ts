@@ -1,5 +1,12 @@
 import RSSParser from 'rss-parser'
 import xml2js from 'xml2js'
+import {
+  FetchTimeoutError,
+  RedirectError,
+  ResponseTooLargeError,
+  safeFetchText,
+  UnsafeUrlError,
+} from './safe-fetch.js'
 import { Translator } from './translator.js'
 import { RSSFeed, RSSItem, RSSObject, BatchTranslateItem } from './types.js'
 
@@ -25,7 +32,8 @@ export class RSSProcessor {
   ): Promise<string | null> {
     try {
       // Fetch and parse RSS feed
-      const feed = await this.parser.parseURL(feedUrl)
+      const body = await safeFetchText(feedUrl)
+      const feed = await this.parser.parseString(body)
 
       // Prepare all texts for batch translation
       const batchItems: BatchTranslateItem[] = []
@@ -110,6 +118,15 @@ export class RSSProcessor {
       // Convert back to XML
       return this.feedToXML(feed)
     } catch (error) {
+      // 呼び出し元が個別の HTTP ステータスに対応付けるエラーは握りつぶさない
+      if (
+        error instanceof UnsafeUrlError ||
+        error instanceof FetchTimeoutError ||
+        error instanceof ResponseTooLargeError ||
+        error instanceof RedirectError
+      ) {
+        throw error
+      }
       console.error('RSS processing error:', error)
       return null
     }

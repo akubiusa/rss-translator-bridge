@@ -10,8 +10,10 @@ RSS Translator Bridgeは、RSSフィードを翻訳するFastifyベースのWeb�
 
 ### 主要コンポーネント
 
-- **index.ts**: Fastifyサーバーの設定と起動、メインのルーティング
-- **rss-processor.ts**: RSSParser を使用したフィード取得・解析・XML再構築
+- **index.ts**: サーバーの起動（`import.meta` を使うため、Jest からは読み込めない）
+- **app.ts**: Fastifyアプリケーションの設定とルーティング（`buildApp`）
+- **safe-fetch.ts**: 取得先を検証するRSS取得処理（SSRF対策。スキーム・宛先IP・リダイレクト・タイムアウト・サイズ上限）
+- **rss-processor.ts**: safe-fetch で取得した本文を RSSParser で解析・XML再構築
 - **translator.ts**: GAS API を使用したバッチ翻訳処理
 - **types.ts**: TypeScript型定義（RSS、翻訳リクエスト/レスポンス）
 - **config.ts**: 環境変数ベースの設定管理
@@ -19,7 +21,7 @@ RSS Translator Bridgeは、RSSフィードを翻訳するFastifyベースのWeb�
 ### データフロー
 
 1. クライアント → GET /?url=&sourceLang=&targetLang=
-2. RSSProcessor → RSS取得・解析 → バッチ翻訳項目の準備
+2. RSSProcessor → safeFetchText で RSS取得 → 解析 → バッチ翻訳項目の準備
 3. Translator → GAS API への バッチ翻訳リクエスト
 4. レスポンス → 翻訳結果をRSSに適用 → XML形式で返却
 
@@ -101,6 +103,17 @@ RSSフィードを翻訳して返すメインエンドポイント
 
 **レスポンス:** 翻訳済みRSS XML または エラーJSON
 
+**エラーステータス（`/api` と `/api/proxy` 共通）:**
+
+- 400: `url` が未指定・複数指定、または不正なスキーム・内部アドレスなどの取得先
+- 502: 応答サイズの上限超過、リダイレクトの回数超過・`Location` なし
+- 504: 取得の総タイムアウト超過
+- 500: 上記以外の取得・解析・翻訳の失敗
+
+### GET /api/proxy
+
+翻訳前の元のRSSを取得して返す。`/api` と同じ取得先の制限（`safe-fetch.ts`）を受ける。上流が2xx以外を返した場合はそのステータスを返す。
+
 ### GET /health
 
 ヘルスチェックエンドポイント
@@ -169,6 +182,7 @@ pnpm test rss-processor.test.ts
 ## 注意事項
 
 - バッチ翻訳でVercelの30秒制限を回避（GAS側のタイムアウト: 25秒）
+- 利用者が指定するURLの取得は必ず `safeFetchText` 経由にする（`fetch` や `RSSParser.parseURL` を直接使わない）。取得は5秒（DNS解決・リダイレクト・本文受信の総期限）・展開後5MiB・リダイレクト5回までで、http/https以外と内部アドレスは拒否する
 - 翻訳失敗時は元のテキストをフォールバックとして使用
 - RSSフィードのアイテム数制限なし（全件翻訳）
 - HTMLコンテンツの翻訳に対応（content:encoded, description, summary）
