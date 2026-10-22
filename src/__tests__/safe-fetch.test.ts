@@ -437,6 +437,37 @@ describe('safe-fetch', () => {
       await expect(fetchText('/')).resolves.toBe('圧縮された本文')
     })
 
+    it('Content-Type の charset で本文を文字列にする', async () => {
+      handler = (_request, response) => {
+        response.writeHead(200, {
+          'Content-Type': 'application/rss+xml; charset=ISO-8859-1',
+        })
+        response.end(Buffer.from('Café München', 'latin1'))
+      }
+      await expect(fetchText('/')).resolves.toBe('Café München')
+    })
+
+    it('未対応の charset は UTF-8 として扱う', async () => {
+      handler = (_request, response) => {
+        response.writeHead(200, {
+          'Content-Type': 'application/rss+xml; charset=no-such-charset',
+        })
+        response.end('日本語')
+      }
+      await expect(fetchText('/')).resolves.toBe('日本語')
+    })
+
+    it('本文がない応答に Content-Encoding が付いていても空文字列を返す', async () => {
+      handler = (_request, response) => {
+        response.writeHead(200, {
+          'Content-Encoding': 'gzip',
+          'Content-Length': '0',
+        })
+        response.end()
+      }
+      await expect(fetchText('/')).resolves.toBe('')
+    })
+
     it('未対応の Content-Encoding は SafeFetchError', async () => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Encoding': 'compress' })
@@ -498,6 +529,7 @@ describe('safe-fetch', () => {
       'fc00::1',
       'fd12:3456::1',
       'fe80::1',
+      'fec0::1',
       'ff02::1',
       'fe80::1%eth0',
       'not-an-ip',

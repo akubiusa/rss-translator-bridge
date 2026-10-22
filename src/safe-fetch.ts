@@ -43,6 +43,7 @@ const BLOCKED_IPV6_SUBNETS: [string, number][] = [
   ['3fff::', 20],
   ['fc00::', 7],
   ['fe80::', 10],
+  ['fec0::', 10],
   ['ff00::', 8],
 ]
 
@@ -136,6 +137,32 @@ const defaultLookup: net.LookupFunction = (hostname, options, callback) => {
 function isIPv4MappedAddress(address: string): boolean {
   const normalized = new URL(`http://[${address}]/`).hostname
   return /^\[::ffff:[\da-f]{1,4}(:[\da-f]{1,4})?\]$/.test(normalized)
+}
+
+/**
+ * 本文を Content-Type の charset で文字列に変換する
+ *
+ * charset の指定がない場合と、未対応のラベルの場合は UTF-8 として扱う。
+ *
+ * @param body 展開済みの本文
+ * @param contentType Content-Type ヘッダー
+ * @returns 文字列にした本文
+ */
+function decodeBody(body: Buffer, contentType: string | undefined): string {
+  const label = /charset\s*=\s*["']?([^\s"';]+)/i.exec(contentType ?? '')?.[1]
+  if (label) {
+    try {
+      return new TextDecoder(label).decode(body)
+    } catch (error) {
+      // 未対応のラベルだけを UTF-8 にフォールバックする。それ以外は握りつぶさない
+      if (
+        (error as NodeJS.ErrnoException).code !== 'ERR_ENCODING_NOT_SUPPORTED'
+      ) {
+        throw error
+      }
+    }
+  }
+  return new TextDecoder().decode(body)
 }
 
 /**
@@ -342,9 +369,12 @@ export function safeFetchText(
         return
       }
 
-      const encoding = (response.headers['content-encoding'] ?? '')
-        .trim()
-        .toLowerCase()
+      // 本文がない応答に Content-Encoding が付いていても、展開器は空入力でエラーになる
+      const hasBody =
+        status !== 204 && response.headers['content-length'] !== '0'
+      const encoding = hasBody
+        ? (response.headers['content-encoding'] ?? '').trim().toLowerCase()
+        : ''
       let decoder: zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | null =
         null
       switch (encoding) {
@@ -393,7 +423,14 @@ export function safeFetchText(
           fail(error)
           return
         }
-        succeed(Buffer.concat(chunks).toString('utf8'))
+        // pipeline のコールバック内の例外は Promise に届かないため、ここで失敗として扱う
+        try {
+          succeed(
+            decodeBody(Buffer.concat(chunks), response.headers['content-type'])
+          )
+        } catch (decodeError) {
+          fail(decodeError as Error)
+        }
       }
       if (decoder) {
         pipeline(response, decoder, sink, onComplete)

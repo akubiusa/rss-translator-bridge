@@ -236,7 +236,7 @@ GET /?url=https://example.com/feed.xml&sourceLang=en&targetLang=ja
 
 ### `GET /api` と `GET /api/proxy`
 
-`GET /api` は `GET /` と同じ翻訳エンドポイントです。`GET /api/proxy?url=...` は翻訳前の元の RSS を取得して返します。
+`GET /api` は RSS フィードを翻訳して返すエンドポイントです。`GET /api/proxy?url=...` は翻訳前の元の RSS を取得して返します。
 
 #### 取得先の制限
 
