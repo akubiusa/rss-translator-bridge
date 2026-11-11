@@ -40,10 +40,9 @@ class RSSTranslator {
       const startTime = performance.now()
       const startDateTime = new Date()
 
-      // 元のRSSフィードを取得
+      // Fetch the original feed and the translation in parallel
       const originalRssPromise = this.fetchOriginalRSS(url)
 
-      // 翻訳APIを呼び出し
       const translatedRssPromise = this.translateRSS(
         url,
         sourceLang,
@@ -52,7 +51,6 @@ class RSSTranslator {
         excludeItemTitle
       )
 
-      // 並行で実行
       const [originalRss, translatedResult] = await Promise.all([
         originalRssPromise,
         translatedRssPromise,
@@ -81,22 +79,22 @@ class RSSTranslator {
 
   async fetchOriginalRSS(url) {
     try {
-      // CORS制限を回避するため、サーバー経由で取得
+      // Go through the server to avoid CORS restrictions
       const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
       const response = await fetch(proxyUrl)
 
       if (!response.ok) {
-        // プロキシが利用できない場合は、直接取得を試行
+        // If the proxy fails, try fetching directly
         const directResponse = await fetch(url, { mode: 'cors' })
         if (!directResponse.ok) {
-          throw new Error('元のRSSフィードの取得に失敗しました')
+          throw new Error('Failed to fetch the original RSS feed')
         }
         return await directResponse.text()
       }
 
       return await response.text()
     } catch (error) {
-      // フォールバック: サンプルXMLを返す
+      // Fallback: return placeholder XML
       console.warn('Original RSS fetch failed, using fallback:', error)
       return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -176,19 +174,17 @@ class RSSTranslator {
     startTime,
     httpStatus = 200
   ) {
-    // パフォーマンス情報を表示
     document.querySelector('#responseTime').textContent =
       `${responseTime.toFixed(2)}ms`
     document.querySelector('#status').textContent = `成功 (HTTP ${httpStatus})`
     document.querySelector('#startTime').textContent =
       startTime.toLocaleString()
 
-    // リクエストURLを表示
     if (this.currentRequestUrl) {
       this.requestUrlInput.value = this.currentRequestUrl
     }
 
-    // XML内容を表示（シンタックスハイライト付き）
+    // Show the XML with syntax highlighting
     document.querySelector('#originalXml').querySelector('code').innerHTML =
       this.highlightXML(originalXml)
     document.querySelector('#translatedXml').querySelector('code').innerHTML =
@@ -204,11 +200,10 @@ class RSSTranslator {
     this.performanceSection.style.display = 'none'
     this.resultsSection.style.display = 'none'
 
-    // パフォーマンス情報にエラー状態を表示
     const statusText = httpStatus ? `エラー (HTTP ${httpStatus})` : 'エラー'
     document.querySelector('#status').textContent = statusText
 
-    // リクエストURLを表示（エラーの場合でも）
+    // Show the request URL even on errors
     if (this.currentRequestUrl) {
       this.requestUrlInput.value = this.currentRequestUrl
     }
@@ -217,7 +212,7 @@ class RSSTranslator {
   }
 
   highlightXML(xmlString) {
-    // 簡単なXMLシンタックスハイライト
+    // Simple XML syntax highlighting
     return xmlString
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -225,10 +220,8 @@ class RSSTranslator {
       .replaceAll(
         /&lt;(\/?[\w:]+)([^&]*)&gt;/g,
         (match, tagName, attributes) => {
-          // タグ名をハイライト
           let highlighted = `&lt;<span class="xml-tag">${tagName}</span>`
 
-          // 属性をハイライト
           if (attributes.trim()) {
             highlighted += attributes.replaceAll(
               /([\w:-]+)=(["'])(.*?)\2/g,
@@ -246,7 +239,7 @@ class RSSTranslator {
       )
   }
 
-  // XMLのフォーマット（美化）
+  // Pretty-print the XML
   formatXML(xmlString) {
     const formatted = xmlString.replaceAll(/(>)(<)(\/*)/g, '$1\n$2$3')
     const lines = formatted.split('\n')
@@ -275,40 +268,37 @@ class RSSTranslator {
     return result.trim()
   }
 
-  // URLをクリップボードにコピー
   async copyUrl() {
     if (!this.currentRequestUrl) return
 
     try {
       await navigator.clipboard.writeText(this.currentRequestUrl)
-      // 一時的にボタンテキストを変更してフィードバック
+      // Briefly change the button text as feedback
       const originalText = this.copyUrlBtn.textContent
       this.copyUrlBtn.textContent = '✓'
       setTimeout(() => {
         this.copyUrlBtn.textContent = originalText
       }, 1000)
     } catch (error) {
-      console.error('コピーに失敗しました:', error)
-      // フォールバック: 選択状態にする
+      console.error('Failed to copy:', error)
+      // Fallback: select the text
       this.requestUrlInput.select()
       this.requestUrlInput.setSelectionRange(0, 99_999)
     }
   }
 
-  // URLを新しいタブで開く
   openUrl() {
     if (!this.currentRequestUrl) return
     globalThis.open(this.currentRequestUrl, '_blank')
   }
 }
 
-// アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
   const translator = new RSSTranslator()
   return translator
 })
 
-// パフォーマンス計測の詳細表示
+// Detailed performance display
 globalThis.addEventListener('load', () => {
   const perfEntries = performance.getEntriesByType('navigation')
   if (perfEntries.length > 0) {

@@ -66,14 +66,14 @@ describe('SSRF protection on the real app', () => {
       ['file:///etc/passwd', 'Unsupported URL scheme: file:'],
       ['ftp://example.com/feed.xml', 'Unsupported URL scheme: ftp:'],
       ['http://user:secret@example.com/', 'URL must not contain credentials'],
-    ])('%s を 400 で拒否する', async (target, message) => {
+    ])('rejects %s with 400', async (target, message) => {
       const response = await get(`url=${encodeURIComponent(target)}`)
 
       expect(response.statusCode).toBe(400)
       expect(JSON.parse(response.body)).toEqual(errorBody(message))
     })
 
-    it('url が未指定なら 400', async () => {
+    it('returns 400 when url is missing', async () => {
       const response = await get('')
 
       expect(response.statusCode).toBe(400)
@@ -82,7 +82,7 @@ describe('SSRF protection on the real app', () => {
       )
     })
 
-    it('url が複数指定されて配列になる場合は 400 で、取得を行わない', async () => {
+    it('returns 400 without fetching when url is given multiple times and becomes an array', async () => {
       const response = await get(
         `url=${encodeURIComponent('http://example.com/a')}&url=${encodeURIComponent('http://example.com/b')}`
       )
@@ -94,7 +94,7 @@ describe('SSRF protection on the real app', () => {
       expect(mockSafeFetchText).not.toHaveBeenCalled()
     })
 
-    it('タイムアウトは 504 を返す', async () => {
+    it('returns 504 on timeout', async () => {
       mockSafeFetchText.mockRejectedValue(
         new FetchTimeoutError('Fetch timed out after 5000ms')
       )
@@ -109,7 +109,7 @@ describe('SSRF protection on the real app', () => {
       )
     })
 
-    it('応答サイズの上限超過は 502 を返す', async () => {
+    it('returns 502 when the response size limit is exceeded', async () => {
       mockSafeFetchText.mockRejectedValue(
         new ResponseTooLargeError('Response exceeds 5242880 bytes: example.com')
       )
@@ -124,7 +124,7 @@ describe('SSRF protection on the real app', () => {
       )
     })
 
-    it('リダイレクトの異常は 502 を返す', async () => {
+    it('returns 502 on a redirect error', async () => {
       mockSafeFetchText.mockRejectedValue(
         new RedirectError('Too many redirects: example.com')
       )
@@ -140,8 +140,8 @@ describe('SSRF protection on the real app', () => {
     })
   })
 
-  describe('上流のエラー応答', () => {
-    it('/api/proxy は上流のステータスをそのまま返す', async () => {
+  describe('upstream error responses', () => {
+    it('/api/proxy returns the upstream status as it is', async () => {
       mockSafeFetchText.mockRejectedValue(new HttpStatusError(404, 'Not Found'))
 
       const response = await app.inject({
@@ -155,7 +155,7 @@ describe('SSRF protection on the real app', () => {
       })
     })
 
-    it('/api は従来どおり 500 を返す', async () => {
+    it('/api returns 500 as before', async () => {
       mockSafeFetchText.mockRejectedValue(new HttpStatusError(404, 'Not Found'))
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
         // no-op
@@ -174,7 +174,7 @@ describe('SSRF protection on the real app', () => {
       consoleSpy.mockRestore()
     })
 
-    it('/api/proxy は接続失敗などを 500 で返す', async () => {
+    it('/api/proxy returns 500 on connection failures and similar', async () => {
       mockSafeFetchText.mockRejectedValue(new Error('connect ECONNREFUSED'))
 
       const response = await app.inject({
@@ -189,8 +189,8 @@ describe('SSRF protection on the real app', () => {
     })
   })
 
-  describe('公開 RSS の取得', () => {
-    it('/api/proxy は取得した本文をそのまま返す', async () => {
+  describe('fetching a public RSS', () => {
+    it('/api/proxy returns the fetched body as it is', async () => {
       mockSafeFetchText.mockResolvedValue('<rss version="2.0"></rss>')
 
       const response = await app.inject({

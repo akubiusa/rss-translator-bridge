@@ -1,19 +1,23 @@
 import { TranslationCacheConfig } from './types.js'
 
-/** 翻訳キャッシュのエントリー。 */
+/** A cached translation and its expiry time (epoch milliseconds). */
 interface CacheEntry {
   value: string
   expiresAt: number
 }
 
-/** 翻訳結果を保持する LRU キャッシュ。 */
+/**
+ * In-memory LRU cache with a TTL for translation results.
+ *
+ * Map insertion order is the recency order: `get` and `set` re-insert the key, so the first key is the least recently used.
+ * Invalid settings (non-finite or non-positive TTL/size) disable the cache.
+ */
 export class TranslationCache {
   private store = new Map<string, CacheEntry>()
 
-  /** 翻訳キャッシュを初期化する。 */
   constructor(private config: TranslationCacheConfig) {}
 
-  /** キャッシュが有効かどうかを判定する。 */
+  /** Returns whether the cache is enabled and its settings are valid. */
   isEnabled(): boolean {
     if (!this.config.enabled) {
       return false
@@ -27,7 +31,7 @@ export class TranslationCache {
     return this.config.ttlMs > 0 && this.config.maxItems > 0
   }
 
-  /** キャッシュから翻訳結果を取得する。 */
+  /** Returns the cached translation, or null on a miss or when expired. A hit refreshes recency. */
   get(key: string): string | null {
     if (!this.config.enabled) {
       return null
@@ -54,7 +58,7 @@ export class TranslationCache {
     return entry.value
   }
 
-  /** キャッシュに翻訳結果を保存する。 */
+  /** Stores a translation, then evicts the least recently used entries beyond `maxItems`. */
   set(key: string, value: string): void {
     if (!this.config.enabled) {
       return
@@ -77,7 +81,6 @@ export class TranslationCache {
     this.evictIfNeeded()
   }
 
-  /** LRU に基づいて古いエントリーを削除する。 */
   private evictIfNeeded(): void {
     if (this.store.size <= this.config.maxItems) {
       return

@@ -1,6 +1,11 @@
 import { Config } from './types.js'
 
-/** 環境変数から設定を読み込む。 */
+/**
+ * Builds the application config from environment variables.
+ *
+ * @returns The resolved config
+ * @throws {Error} When `GAS_URL` is not set
+ */
 export function loadConfig(): Config {
   const gasUrl = process.env.GAS_URL
   if (!gasUrl) {

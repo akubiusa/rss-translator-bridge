@@ -1,4 +1,4 @@
-/** アプリケーション設定。 */
+/** Application config built by `loadConfig`. */
 export interface Config {
   gasUrl: string
   port?: number
@@ -11,21 +11,21 @@ export interface Config {
   cacheControl: CacheControlConfig
 }
 
-/** 翻訳キャッシュ設定。 */
+/** Translation cache settings. */
 export interface TranslationCacheConfig {
   enabled: boolean
   ttlMs: number
   maxItems: number
 }
 
-/** CDN キャッシュ設定。 */
+/** CDN `Cache-Control` settings. */
 export interface CacheControlConfig {
   enabled: boolean
   sMaxAge: number
   staleWhileRevalidate: number
 }
 
-/** 翻訳 API のリクエストパラメータ。 */
+/** Query parameters of `GET /api`. The exclude flags are the strings `"true"` or `"false"`. */
 export interface TranslateRequest {
   url: string
   sourceLang?: string
@@ -34,14 +34,14 @@ export interface TranslateRequest {
   excludeItemTitle?: string
 }
 
-/** 翻訳 API のレスポンス。 */
+/** JSON body of `GET /api` responses. Only error bodies are returned today; success responses are RSS XML. */
 export interface TranslateResponse {
   status: 'success' | 'error'
   data?: string
   error?: string
 }
 
-/** GAS 翻訳リクエスト。 */
+/** Request body for translating a single text with the GAS API. */
 export interface GASTranslateRequest {
   before: string
   after: string
@@ -49,18 +49,18 @@ export interface GASTranslateRequest {
   mode: 'html'
 }
 
-/** GAS 翻訳レスポンス。 */
+/** Single-text GAS response shape. Unused: `Translator.translate` reads `{ response?: { status?, result? } }` instead. */
 export interface GASTranslateResponse {
   text: string
 }
 
-/** バッチ翻訳の入力項目。 */
+/** An item to translate in a batch. */
 export interface BatchTranslateItem {
   id: string
   text: string
 }
 
-/** GAS バッチ翻訳リクエスト。 */
+/** Request body for batch translation with the GAS API. */
 export interface GASBatchTranslateRequest {
   batch: true
   before: string
@@ -69,7 +69,7 @@ export interface GASBatchTranslateRequest {
   mode: 'html'
 }
 
-/** バッチ翻訳の結果。 */
+/** Per-item result of a batch translation. */
 export interface BatchTranslateResult {
   id: string
   original: string
@@ -78,7 +78,7 @@ export interface BatchTranslateResult {
   error?: string
 }
 
-/** GAS バッチ翻訳レスポンス。 */
+/** Response of the GAS API for a batch. */
 export interface GASBatchTranslateResponse {
   status: boolean
   results: BatchTranslateResult[]
@@ -87,7 +87,7 @@ export interface GASBatchTranslateResponse {
   executionTime: number
 }
 
-/** RSS アイテム。 */
+/** An item of a parsed RSS feed. */
 export interface RSSItem {
   title?: string
   link?: string
@@ -101,7 +101,7 @@ export interface RSSItem {
   [key: string]: unknown
 }
 
-/** RSS フィード。 */
+/** A parsed RSS feed. */
 export interface RSSFeed {
   title?: string
   link?: string
@@ -112,7 +112,7 @@ export interface RSSFeed {
   [key: string]: unknown
 }
 
-/** RSS XML 生成用のオブジェクト。 */
+/** Object passed to the xml2js builder to generate RSS XML. */
 export interface RSSObject {
   rss: {
     $: {

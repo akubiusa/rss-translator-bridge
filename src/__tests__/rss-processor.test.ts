@@ -11,7 +11,7 @@ import {
 
 jest.mock('rss-parser')
 jest.mock('../translator')
-// エラークラスは本物を使うため、取得関数だけを差し替える
+// Keep the real error classes and mock only the fetch function
 jest.mock('../safe-fetch', () => ({
   ...jest.requireActual<typeof import('../safe-fetch')>('../safe-fetch'),
   safeFetchText: jest.fn(),

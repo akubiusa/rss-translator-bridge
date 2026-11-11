@@ -8,11 +8,19 @@ import {
 } from './types.js'
 import { TranslationCache } from './translation-cache.js'
 
+/**
+ * Translation client for the Google Apps Script (GAS) API.
+ *
+ * Failures never throw: a failed batch falls back to the original text, and a failed single translation returns null.
+ */
 export class Translator {
   private gasUrl: string
   private cache: TranslationCache
 
-  /** 翻訳クライアントを初期化する。 */
+  /**
+   * @param gasUrl URL of the GAS translation API
+   * @param cacheConfig Translation cache settings. The cache is disabled when omitted.
+   */
   constructor(gasUrl: string, cacheConfig?: TranslationCacheConfig) {
     this.gasUrl = gasUrl
     this.cache = new TranslationCache(
@@ -20,7 +28,7 @@ export class Translator {
     )
   }
 
-  /** 翻訳キャッシュのキーを生成する。 */
+  /** Builds a cache key from the language pair and a SHA-256 hash of the text. */
   private createCacheKey(
     text: string,
     sourceLang: string,
@@ -30,7 +38,11 @@ export class Translator {
     return `${sourceLang}:${targetLang}:${hash}`
   }
 
-  /** タイムアウト付きで GAS に JSON POST し、レスポンスを返す。 */
+  /**
+   * POSTs JSON to the GAS API and aborts the request after `timeoutMs`.
+   *
+   * @throws {Error} On a non-2xx response or a network error. The timeout covers only the response headers, not reading the body.
+   */
   private async postWithTimeout(
     body: unknown,
     timeoutMs: number
@@ -63,7 +75,17 @@ export class Translator {
     return response
   }
 
-  /** 複数テキストをまとめて翻訳する。 */
+  /**
+   * Translates multiple texts in one GAS request, serving cache hits locally.
+   *
+   * Items GAS reports as failed fall back to their original text. If the whole request fails, every pending item falls back.
+   * If GAS does not report success (HTTP 200 with a truthy `status`), the pending items are left out of the returned map.
+   *
+   * @param items Texts to translate, each with an id
+   * @param sourceLang Source language code
+   * @param targetLang Target language code
+   * @returns Translated (or fallback) text keyed by item id
+   */
   async translateBatch(
     items: BatchTranslateItem[],
     sourceLang: string,
@@ -112,7 +134,7 @@ export class Translator {
           .map((item) => ({ id: item.id, textLength: item.text.length }))
       )
 
-      // 25 seconds timeout for batch processing (within Vercel's 30s limit)
+      // 25s leaves headroom under the 30s Vercel function limit (`maxDuration` in vercel.json)
       const response = await this.postWithTimeout(request, 25_000)
       const data = (await response.json()) as GASBatchTranslateResponse
 
@@ -139,7 +161,7 @@ export class Translator {
             }
           } else {
             console.log(`Translation failed for ${result.id}:`, result.error)
-            // フォールバック：元のテキストを使用
+            // Fall back to the original text
             results.set(result.id, result.original)
           }
         }
@@ -152,7 +174,7 @@ export class Translator {
       }
     } catch (error) {
       console.error('Batch translation error:', error)
-      // フォールバック：元のテキストを使用
+      // Fall back to the original text
       for (const item of pendingItems) {
         results.set(item.id, item.text)
       }
@@ -161,7 +183,14 @@ export class Translator {
     return results
   }
 
-  /** 単一テキストを翻訳する。 */
+  /**
+   * Translates a single text with the GAS API.
+   *
+   * @param text Text to translate
+   * @param sourceLang Source language code
+   * @param targetLang Target language code
+   * @returns The translation, or null on failure
+   */
   async translate(
     text: string,
     sourceLang: string,
@@ -187,7 +216,7 @@ export class Translator {
         mode: 'html',
       }
 
-      // 5 seconds timeout for Vercel compatibility
+      // Keep single translations short to stay within the Vercel function limit
       const response = await this.postWithTimeout(request, 5000)
       const data = (await response.json()) as {
         response?: { status?: boolean; result?: string }

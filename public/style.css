@@ -139,7 +139,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  grid-column: 1 / -1; /* グリッド全体の幅を使用 */
+  grid-column: 1 / -1; /* span the full grid width */
 }
 
 .url-controls {
