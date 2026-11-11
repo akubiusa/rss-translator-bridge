@@ -14,21 +14,19 @@ import {
 } from './safe-fetch.js'
 import { TranslateRequest, TranslateResponse } from './types.js'
 
-/**
- * buildApp のオプション
- */
+/** Options for `buildApp`. */
 export interface BuildAppOptions {
-  /** 静的ファイルの配信元。テスト環境では指定しても配信しない */
+  /** Directory served as static files. Ignored when `NODE_ENV` is `test`. */
   staticRoot?: string
 }
 
 /**
- * url クエリパラメータの不備を返す
+ * Validates the `url` query parameter.
  *
- * Fastify は同じキーが複数あると配列で渡すため、文字列であることも確認する。
+ * Fastify passes a repeated key as an array, so the type is checked as well.
  *
- * @param url url クエリパラメータ
- * @returns 不備があればエラーメッセージ、なければ undefined
+ * @param url The `url` query parameter
+ * @returns An error message if invalid, otherwise undefined
  */
 function getUrlParameterError(url: unknown): string | undefined {
   if (url === undefined || url === '') {
@@ -41,10 +39,10 @@ function getUrlParameterError(url: unknown): string | undefined {
 }
 
 /**
- * 取得処理のエラーを HTTP ステータスとメッセージに対応付ける
+ * Maps a fetch error to an HTTP status and message.
  *
- * @param error 取得処理で発生したエラー
- * @returns 対応付けたステータスとメッセージ。個別に扱わないエラーは undefined
+ * @param error The error thrown while fetching
+ * @returns The status and message, or undefined for errors handled generically
  */
 function toHttpError(
   error: unknown
@@ -65,10 +63,11 @@ function toHttpError(
 }
 
 /**
- * Fastify アプリケーションを組み立てる
+ * Builds the Fastify app with its routes.
  *
- * @param options 静的ファイルの配信元などのオプション
- * @returns 組み立てた Fastify インスタンス
+ * @param options Build options such as the static file root
+ * @returns The Fastify instance
+ * @throws {Error} When `GAS_URL` is not set
  */
 export async function buildApp(options: BuildAppOptions = {}) {
   const config = loadConfig()
@@ -76,12 +75,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     logger: true,
   })
 
-  // Register CORS
   await app.register(cors, {
     origin: true,
   })
 
-  // Register static files (skip in test environment)
+  // Static files are skipped under test
   if (process.env.NODE_ENV !== 'test' && options.staticRoot) {
     await app.register(staticPlugin, {
       root: options.staticRoot,
@@ -91,19 +89,18 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   const rssProcessor = new RSSProcessor(config.gasUrl, config.translationCache)
 
-  // 拒否した宛先の IP は応答に含めず、サーバー側のログにだけ残す
+  // The blocked destination IP is logged server-side only and never included in responses
   const logBlockedDestination = (error: unknown) => {
     if (error instanceof UnsafeUrlError && error.address) {
       app.log.warn({ address: error.address }, error.message)
     }
   }
 
-  // Health check endpoint
   app.get('/health', () => {
     return { status: 'ok', timestamp: new Date().toISOString() }
   })
 
-  // Proxy endpoint for fetching original RSS (CORS workaround)
+  // Returns the original RSS so the web UI can show it without hitting CORS
   app.get<{
     Querystring: { url: string }
   }>('/api/proxy', async (request, reply) => {
@@ -138,8 +135,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     }
   })
 
-  // Main RSS translation endpoint handler
-  /** RSS 翻訳 API を処理する。 */
+  /** Handles `GET /api`: translates the feed and returns it as RSS XML, or maps the error to a status. */
   const translateHandler = async (
     request: FastifyRequest<{ Querystring: TranslateRequest }>,
     reply: FastifyReply
@@ -181,7 +177,6 @@ export async function buildApp(options: BuildAppOptions = {}) {
         return await reply.code(500).send(response)
       }
 
-      // Return translated RSS as XML
       return await reply
         .code(200)
         .header('Content-Type', 'application/rss+xml; charset=utf-8')
@@ -206,7 +201,6 @@ export async function buildApp(options: BuildAppOptions = {}) {
     }
   }
 
-  // Main RSS translation API endpoint
   app.get<{
     Querystring: TranslateRequest
   }>('/api', translateHandler)

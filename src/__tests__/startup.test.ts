@@ -5,14 +5,13 @@ import { RSSProcessor } from '../rss-processor.js'
 import { TranslateRequest, TranslateResponse } from '../types.js'
 import { buildCacheControlHeader } from '../cache-control.js'
 
-// 起動テスト用の設定を追加
 process.env.NODE_ENV = 'test'
 
-// テスト用の軽量なgetApp関数
+// Lightweight stand-in for getApp
 async function getTestApp() {
   const config = loadConfig()
   const app = fastify({
-    logger: false, // テスト時はログを無効
+    logger: false,
   })
 
   // Register CORS
@@ -20,7 +19,7 @@ async function getTestApp() {
     origin: true,
   })
 
-  // staticプラグインはテスト環境では登録しない
+  // The static plugin is not registered under test
 
   const rssProcessor = new RSSProcessor(config.gasUrl, config.translationCache)
 
@@ -113,11 +112,9 @@ describe('Application Startup', () => {
     try {
       await app.ready()
 
-      // アプリケーションが正常に起動できることを確認
       expect(app).toBeDefined()
       expect(app.server).toBeDefined()
 
-      // プラグインが正常に登録されていることを確認
       expect(app.hasPlugin('@fastify/cors')).toBe(true)
     } finally {
       await app.close()
@@ -130,7 +127,6 @@ describe('Application Startup', () => {
     try {
       await app.ready()
 
-      // 必要なルートが登録されていることを確認
       const routes = app.printRoutes({ commonPrefix: false })
 
       expect(routes).toContain('/health (GET, HEAD)')

@@ -24,7 +24,7 @@ const HOSTS: Record<string, string[] | undefined> = {
   'mixed.test': ['127.0.0.1', '10.0.0.5'],
 }
 
-// テストサーバーのループバックだけを許可し、それ以外は本番と同じ判定にする
+// Allow only the test server's loopback address; everything else uses the production check
 const allowLoopback = (address: string): boolean =>
   address === '127.0.0.1' ? false : isBlockedAddress(address)
 
@@ -54,7 +54,7 @@ const fakeLookup: net.LookupFunction = (hostname, options, callback) => {
 const resolveTo =
   (addresses: string[]): net.LookupFunction =>
   (_hostname, options, callback) => {
-    // 検証ラッパーは常に all: true で下位のリゾルバーを呼ぶ
+    // The validating wrapper always calls the underlying resolver with all: true
     expect(options.all).toBe(true)
     callback(
       null,
@@ -106,32 +106,32 @@ describe('safe-fetch', () => {
     }
   })
 
-  describe('スキームと URL の検証', () => {
+  describe('scheme and URL validation', () => {
     it.each([
       ['file:///etc/passwd', 'file:'],
       ['ftp://example.com/feed.xml', 'ftp:'],
       ['gopher://example.com/', 'gopher:'],
-    ])('%s を拒否する', async (url, scheme) => {
+    ])('rejects %s', async (url, scheme) => {
       await expect(safeFetchText(url)).rejects.toThrow(
         new UnsafeUrlError(`Unsupported URL scheme: ${scheme}`)
       )
       await expect(safeFetchText(url)).rejects.toBeInstanceOf(UnsafeUrlError)
     })
 
-    it('URL として不正な文字列を拒否する', async () => {
+    it('rejects a string that is not a valid URL', async () => {
       await expect(safeFetchText('not a url')).rejects.toThrow(
         new UnsafeUrlError('Invalid URL')
       )
     })
 
-    it('ユーザー情報付きの URL を拒否する', async () => {
+    it('rejects a URL with credentials', async () => {
       await expect(
         safeFetchText('http://user:secret@example.com/')
       ).rejects.toThrow(new UnsafeUrlError('URL must not contain credentials'))
     })
   })
 
-  describe('IP リテラルの検証', () => {
+  describe('IP literal validation', () => {
     it.each([
       ['http://127.0.0.1/', '127.0.0.1'],
       ['http://10.0.0.1/', '10.0.0.1'],
@@ -144,15 +144,15 @@ describe('safe-fetch', () => {
       ['http://2130706433/', '127.0.0.1'],
       ['http://0x7f.1/', '127.0.0.1'],
       ['http://127.1/', '127.0.0.1'],
-    ])('%s を拒否する', async (url, literal) => {
+    ])('rejects %s', async (url, literal) => {
       await expect(safeFetchText(url)).rejects.toThrow(
         new UnsafeUrlError(`Blocked destination: ${literal}`)
       )
     })
   })
 
-  describe('名前解決後の IP の検証', () => {
-    it('禁止 IP に解決されるホスト名を拒否し、接続しない', async () => {
+  describe('validation of resolved IPs', () => {
+    it('rejects a hostname resolving to a blocked IP without connecting', async () => {
       await expect(
         safeFetchText(`http://internal.test:${port}/`, {
           lookup: fakeLookup,
@@ -164,7 +164,7 @@ describe('safe-fetch', () => {
       expect(received).toEqual([])
     })
 
-    it('公開 IP と禁止 IP が混在して解決される場合も拒否する', async () => {
+    it('rejects a hostname resolving to both public and blocked IPs', async () => {
       await expect(
         safeFetchText(`http://mixed.test:${port}/`, {
           lookup: fakeLookup,
@@ -174,7 +174,7 @@ describe('safe-fetch', () => {
       expect(received).toEqual([])
     })
 
-    it('拒否した IP を message に含めず、address に保持する', async () => {
+    it('keeps the rejected IP in address, not in message', async () => {
       const error = await safeFetchText(`http://internal.test:${port}/`, {
         lookup: fakeLookup,
         isBlockedAddress: allowLoopback,
@@ -184,7 +184,7 @@ describe('safe-fetch', () => {
       expect((error as UnsafeUrlError).address).toBe('10.0.0.5')
     })
 
-    it('名前解決の失敗はそのまま伝える', async () => {
+    it('propagates resolution failures as they are', async () => {
       await expect(
         safeFetchText(`http://unknown.test:${port}/`, {
           lookup: fakeLookup,
@@ -193,7 +193,7 @@ describe('safe-fetch', () => {
       ).rejects.toThrow('ENOTFOUND unknown.test')
     })
 
-    it('検証した IP でそのまま接続し、Host ヘッダーは元のホスト名にする', async () => {
+    it('connects to the validated IP and keeps the original hostname in the Host header', async () => {
       await expect(fetchText('/feed')).resolves.toBe('ok')
       expect(received).toHaveLength(1)
       expect(received[0].url).toBe('/feed')
@@ -201,8 +201,8 @@ describe('safe-fetch', () => {
     })
   })
 
-  describe('リダイレクト', () => {
-    it('禁止 IP リテラルへのリダイレクトを拒否する', async () => {
+  describe('redirects', () => {
+    it('rejects a redirect to a blocked IP literal', async () => {
       handler = (_request, response) => {
         response.writeHead(302, {
           Location: 'http://169.254.169.254/latest/meta-data/',
@@ -215,7 +215,7 @@ describe('safe-fetch', () => {
       expect(received).toHaveLength(1)
     })
 
-    it('許可外のスキームへのリダイレクトを拒否する', async () => {
+    it('rejects a redirect to a disallowed scheme', async () => {
       handler = (_request, response) => {
         response.writeHead(301, { Location: 'file:///etc/passwd' })
         response.end()
@@ -225,7 +225,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('禁止 IP に解決されるホスト名へのリダイレクトを拒否する', async () => {
+    it('rejects a redirect to a hostname resolving to a blocked IP', async () => {
       handler = (_request, response) => {
         response.writeHead(307, { Location: `http://internal.test:${port}/` })
         response.end()
@@ -236,7 +236,7 @@ describe('safe-fetch', () => {
       expect(received).toHaveLength(1)
     })
 
-    it('スキーム相対の Location も現在の URL を基準に検証する', async () => {
+    it('validates a scheme-relative Location against the current URL', async () => {
       handler = (_request, response) => {
         response.writeHead(302, { Location: '//internal.test/secret' })
         response.end()
@@ -246,7 +246,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('相対 Location を現在の URL を基準に解決して追従する', async () => {
+    it('resolves a relative Location against the current URL and follows it', async () => {
       handler = (request, response) => {
         if (request.url === '/start') {
           response.writeHead(301, { Location: '/middle' })
@@ -269,7 +269,7 @@ describe('safe-fetch', () => {
       ])
     })
 
-    it('Authorization と Cookie を全ホップで送らない', async () => {
+    it('sends no Authorization or Cookie on any hop', async () => {
       handler = (request, response) => {
         if (request.url === '/') {
           response.writeHead(302, { Location: '/next' })
@@ -287,7 +287,7 @@ describe('safe-fetch', () => {
       }
     })
 
-    it('リダイレクト回数が上限を超えたら RedirectError', async () => {
+    it('throws RedirectError when the redirect limit is exceeded', async () => {
       handler = (_request, response) => {
         response.writeHead(302, { Location: '/loop' })
         response.end()
@@ -298,7 +298,7 @@ describe('safe-fetch', () => {
       expect(received).toHaveLength(4)
     })
 
-    it('Location がないリダイレクトは RedirectError', async () => {
+    it('throws RedirectError for a redirect without Location', async () => {
       handler = (_request, response) => {
         response.writeHead(302)
         response.end()
@@ -309,17 +309,17 @@ describe('safe-fetch', () => {
     })
   })
 
-  describe('タイムアウト', () => {
-    it('応答がない場合は FetchTimeoutError', async () => {
+  describe('timeouts', () => {
+    it('throws FetchTimeoutError when there is no response', async () => {
       handler = () => {
-        // 応答しない
+        // Never respond
       }
       await expect(fetchText('/', { timeoutMs: 200 })).rejects.toThrow(
         new FetchTimeoutError('Fetch timed out after 200ms')
       )
     })
 
-    it('本文を少しずつ返し続ける場合も総期限で FetchTimeoutError', async () => {
+    it('throws FetchTimeoutError at the total deadline even if the body trickles in', async () => {
       handler = (_request, response) => {
         response.writeHead(200)
         const interval = setInterval(() => {
@@ -334,7 +334,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('期限はリダイレクトを跨いで共有される', async () => {
+    it('shares the deadline across redirects', async () => {
       handler = (request, response) => {
         const timer = setTimeout(() => {
           if (request.url === '/') {
@@ -356,8 +356,8 @@ describe('safe-fetch', () => {
     })
   })
 
-  describe('応答サイズの上限', () => {
-    it('Content-Length が上限を超えていれば拒否する', async () => {
+  describe('response size limit', () => {
+    it('rejects when Content-Length exceeds the limit', async () => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Length': '10' })
         response.end('0123456789')
@@ -369,7 +369,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('Content-Length がなくても受信量が上限を超えれば拒否する', async () => {
+    it('rejects when the received size exceeds the limit without Content-Length', async () => {
       handler = (_request, response) => {
         response.writeHead(200)
         response.write('01234')
@@ -380,7 +380,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('gzip の展開後が上限を超えれば拒否する', async () => {
+    it('rejects when the gunzipped size exceeds the limit', async () => {
       const compressed = zlib.gzipSync('a'.repeat(1000))
       expect(compressed.length).toBeLessThan(100)
       handler = (_request, response) => {
@@ -392,7 +392,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('上限ちょうどの応答は受け付ける', async () => {
+    it('accepts a response exactly at the limit', async () => {
       handler = (_request, response) => {
         response.writeHead(200)
         response.end('12345')
@@ -401,8 +401,8 @@ describe('safe-fetch', () => {
     })
   })
 
-  describe('応答の処理', () => {
-    it('2xx 以外は HttpStatusError にステータスを持たせる', async () => {
+  describe('response handling', () => {
+    it('throws HttpStatusError carrying the status for non-2xx responses', async () => {
       handler = (_request, response) => {
         response.writeHead(404, 'Not Found')
         response.end('missing')
@@ -416,7 +416,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('本文を UTF-8 として返す', async () => {
+    it('returns the body as UTF-8', async () => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Type': 'application/rss+xml' })
         response.end('日本語のフィード')
@@ -429,7 +429,7 @@ describe('safe-fetch', () => {
       ['x-gzip', (text: string) => zlib.gzipSync(text)],
       ['deflate', (text: string) => zlib.deflateSync(text)],
       ['br', (text: string) => zlib.brotliCompressSync(text)],
-    ])('%s 圧縮された応答を展開して返す', async (encoding, compress) => {
+    ])('decompresses a %s response', async (encoding, compress) => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Encoding': encoding })
         response.end(compress('圧縮された本文'))
@@ -437,7 +437,7 @@ describe('safe-fetch', () => {
       await expect(fetchText('/')).resolves.toBe('圧縮された本文')
     })
 
-    it('Content-Type の charset で本文を文字列にする', async () => {
+    it('decodes the body using the Content-Type charset', async () => {
       handler = (_request, response) => {
         response.writeHead(200, {
           'Content-Type': 'application/rss+xml; charset=ISO-8859-1',
@@ -447,7 +447,7 @@ describe('safe-fetch', () => {
       await expect(fetchText('/')).resolves.toBe('Café München')
     })
 
-    it('未対応の charset は UTF-8 として扱う', async () => {
+    it('treats an unsupported charset as UTF-8', async () => {
       handler = (_request, response) => {
         response.writeHead(200, {
           'Content-Type': 'application/rss+xml; charset=no-such-charset',
@@ -457,7 +457,7 @@ describe('safe-fetch', () => {
       await expect(fetchText('/')).resolves.toBe('日本語')
     })
 
-    it('本文がない応答に Content-Encoding が付いていても空文字列を返す', async () => {
+    it('returns an empty string for a bodiless response with Content-Encoding', async () => {
       handler = (_request, response) => {
         response.writeHead(200, {
           'Content-Encoding': 'gzip',
@@ -468,7 +468,7 @@ describe('safe-fetch', () => {
       await expect(fetchText('/')).resolves.toBe('')
     })
 
-    it('未対応の Content-Encoding は SafeFetchError', async () => {
+    it('throws SafeFetchError for an unsupported Content-Encoding', async () => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Encoding': 'compress' })
         response.end('x')
@@ -478,7 +478,7 @@ describe('safe-fetch', () => {
       )
     })
 
-    it('破損した gzip は SafeFetchError ではないエラーで失敗する', async () => {
+    it('fails a corrupt gzip with an error other than SafeFetchError', async () => {
       handler = (_request, response) => {
         response.writeHead(200, { 'Content-Encoding': 'gzip' })
         response.end('not gzip data')
@@ -488,7 +488,7 @@ describe('safe-fetch', () => {
       expect(error).not.toBeInstanceOf(SafeFetchError)
     })
 
-    it('リクエストには Accept-Encoding と User-Agent だけを送る', async () => {
+    it('sends only Accept-Encoding and User-Agent', async () => {
       await fetchText('/')
       expect(received[0].headers['accept-encoding']).toBe('gzip, deflate, br')
       expect(received[0].headers['user-agent']).toBe('rss-translator-bridge')
@@ -534,7 +534,7 @@ describe('safe-fetch', () => {
       'fe80::1%eth0',
       'not-an-ip',
       '',
-    ])('%s は禁止する', (address) => {
+    ])('blocks %s', (address) => {
       expect(isBlockedAddress(address)).toBe(true)
     })
 
@@ -552,13 +552,13 @@ describe('safe-fetch', () => {
       '2606:4700::1111',
       '2a00:1450:4001:81b::200e',
       '3fff:1000::',
-    ])('%s は許可する', (address) => {
+    ])('allows %s', (address) => {
       expect(isBlockedAddress(address)).toBe(false)
     })
   })
 
   describe('createGuardedLookup', () => {
-    it('all: true で呼ばれたら配列で返す', () => {
+    it('returns an array when called with all: true', () => {
       const callback = jest.fn()
       createGuardedLookup(
         resolveTo(['93.184.216.34', '2606:2800:220:1::1']),
@@ -571,7 +571,7 @@ describe('safe-fetch', () => {
       ])
     })
 
-    it('all が偽なら先頭 1 件を単一アドレス形式で返す', () => {
+    it('returns the first address in single-address form when all is falsy', () => {
       const callback = jest.fn()
       createGuardedLookup(
         resolveTo(['93.184.216.34', '2606:2800:220:1::1']),
@@ -582,7 +582,7 @@ describe('safe-fetch', () => {
     })
 
     it.each([{ all: true }, {}])(
-      '禁止 IP が 1 つでもあれば %j で呼ばれても拒否する',
+      'rejects when any IP is blocked, even when called with %j',
       (options) => {
         const callback = jest.fn()
         createGuardedLookup(
@@ -599,7 +599,7 @@ describe('safe-fetch', () => {
       }
     )
 
-    it('下位のリゾルバーのエラーをそのまま伝える', () => {
+    it('propagates errors of the underlying resolver as they are', () => {
       const failure = new Error('ENOTFOUND') as NodeJS.ErrnoException
       const callback = jest.fn()
       createGuardedLookup((_hostname, _options, done) => {

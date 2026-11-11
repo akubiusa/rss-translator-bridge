@@ -1,34 +1,27 @@
-# GitHub Copilot Code Review Instructions
+# Copilot Code Review Instructions
 
-RSS Translator Bridge（Fastify + TypeScript ESM、GAS 翻訳 API を使う RSS 翻訳サーバー、Vercel デプロイ）のコードレビュー用指示。
+Read `AGENTS.md` for the repository overview, constraints and conventions.
+This file is only a review checklist.
 
-## レビューの重点
+## Language
 
-- **翻訳失敗時のフォールバック**: GAS API 呼び出しや RSS 解析が失敗したとき、例外を握りつぶさず、元テキストへフォールバックしていること。フォールバックを飛ばして空文字や `undefined` を返す変更は指摘する。
-- **タイムアウト整合性**: GAS 呼び出しのタイムアウト（バッチ 25 秒 / 個別 5 秒）は Vercel の 30 秒上限（`vercel.json` の `maxDuration`）内に収まる必要がある。この境界を超える変更や `AbortController` を外す変更は指摘する。
-- **型安全性**: `any` の新規追加、不要な型アサーション (`as`)、`@ts-ignore` は指摘する。TypeScript strict 前提。
-- **環境変数**: 新しい環境変数は `src/config.ts` で一元的に読み取り、`.env.example` と `README.md`・`CLAUDE.md` に追記されていること。`process.env` を config 以外で直接参照する変更は指摘する。
-- **キャッシュ**: 翻訳キャッシュ（`src/translation-cache.ts`）のキー生成や TTL/最大件数の扱いに副作用や境界バグがないか確認する。
-- **秘匿情報**: `GAS_URL` などの認証情報・URL や個人情報がコード・ログ・テストにハードコードされていないこと。
+- Review comments, code comments, JSDoc and documentation are written in English.
+- Flag newly added Japanese outside localized UI strings, quotations, technical identifiers and test fixtures.
 
-## コーディング規約
+## Review focus
 
-- コメント・JSDoc は日本語、エラーメッセージは英語。日本語と英数字の間は半角スペース。
-- 公開関数・インターフェースには日本語 JSDoc を付ける。
-- ES modules。相対 import の拡張子は `.js`（例: `./types.js`）で書く点に注意。
+- Translation failures fall back to the original text; flag changes that return empty values, `undefined` or swallow errors silently.
+- GAS timeouts (batch 25 s, single 5 s) stay within Vercel's 30 s limit (`vercel.json`); flag changes that raise them or remove the `AbortController`.
+- User-supplied URLs are fetched only through `safeFetchText`; flag direct `fetch` or `RSSParser.parseURL` on them, and any weakening of its checks.
+- Flag new `any`, needless `as` assertions and `@ts-ignore`.
+- New environment variables are read only in `src/config.ts` and documented in `.env.example` and `README.md`.
+- Translation cache (`src/translation-cache.ts`): check key generation, TTL and max-size handling for boundary bugs.
+- No secrets (`GAS_URL`, tokens), personal data or internal URLs in code, logs or tests.
+- New behavior and bug fixes come with tests in `src/__tests__/`.
 
-## テスト
+## Not issues
 
-- Jest + ts-jest、テストは `src/__tests__/`。新機能・バグ修正にはテスト追加を期待する。
-- HTTP クライアントは `fetch`（axios ではない）。テストは `fetch` や `rss-parser`、内部モジュールを `jest.mock` でモックする。
-
-## フラグ不要な既知パターン（誤検知しないこと）
-
-- 相対 import に付く `.js` 拡張子は ESM 仕様どおりで正しい。TypeScript ソースなのに `.ts` にすべき、という指摘は不要。
-- `preinstall` の `npx only-allow pnpm` は意図的な pnpm 強制。
-- エラーメッセージ先頭の絵文字は既存の意図的なスタイル。
-- 翻訳失敗時に元テキストを返すのは仕様どおりのフォールバックであり、バグではない。
-
-## 対象外
-
-- lint / format（Prettier + ESLint `@book000/eslint-config`）が機械的に強制する整形の指摘は不要。CI で担保される。
+- `.js` extensions on relative imports are correct for ESM.
+- `npx only-allow pnpm` in `preinstall` is intentional.
+- Returning the original text on translation failure is the specified fallback, not a bug.
+- Formatting and lint issues are enforced by Prettier and ESLint in CI.

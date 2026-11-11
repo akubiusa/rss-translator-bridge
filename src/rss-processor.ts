@@ -16,11 +16,15 @@ import {
   TranslationCacheConfig,
 } from './types.js'
 
+/** Fetches an RSS feed, translates its text with GAS and rebuilds it as RSS 2.0 XML. */
 export class RSSProcessor {
   private parser: RSSParser
   private translator: Translator
 
-  /** RSS 処理クラスを初期化する。 */
+  /**
+   * @param gasUrl URL of the GAS translation API
+   * @param cacheConfig Translation cache settings
+   */
   constructor(gasUrl: string, cacheConfig?: TranslationCacheConfig) {
     this.parser = new RSSParser({
       customFields: {
@@ -30,7 +34,20 @@ export class RSSProcessor {
     this.translator = new Translator(gasUrl, cacheConfig)
   }
 
-  /** RSS フィードを翻訳し、XML として返す。 */
+  /**
+   * Fetches and translates an RSS feed and returns it as XML.
+   *
+   * Translates the feed description, the feed title (unless excluded), and each item title (unless excluded) and body.
+   * The body is the first of `content:encoded`, `content`, `description` and `summary` that exists.
+   *
+   * @param feedUrl URL of the feed, fetched with `safeFetchText`
+   * @param sourceLang Source language code
+   * @param targetLang Target language code
+   * @param excludeFeedTitle Keep the feed title untranslated
+   * @param excludeItemTitle Keep item titles untranslated
+   * @returns The translated RSS XML, or null on parse or other failures
+   * @throws {UnsafeUrlError | FetchTimeoutError | ResponseTooLargeError | RedirectError} Rethrown so that callers can map them to HTTP statuses. Other fetch errors, such as `HttpStatusError`, result in null.
+   */
   async processRSSFeed(
     feedUrl: string,
     sourceLang: string,
@@ -39,14 +56,11 @@ export class RSSProcessor {
     excludeItemTitle = false
   ): Promise<string | null> {
     try {
-      // Fetch and parse RSS feed
       const body = await safeFetchText(feedUrl)
       const feed = await this.parser.parseString(body)
 
-      // Prepare all texts for batch translation
       const batchItems: BatchTranslateItem[] = []
 
-      // Add feed metadata
       if (feed.title && !excludeFeedTitle) {
         batchItems.push({ id: 'feed-title', text: feed.title })
       }
@@ -54,7 +68,7 @@ export class RSSProcessor {
         batchItems.push({ id: 'feed-description', text: feed.description })
       }
 
-      // Add all feed items (no limit for full translation)
+      // All items are translated; there is no item limit
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (feed.items?.length) {
         for (const [index, item] of feed.items.entries()) {
@@ -75,14 +89,12 @@ export class RSSProcessor {
 
       console.log(`Preparing batch translation for ${batchItems.length} items`)
 
-      // Perform batch translation
       const translations = await this.translator.translateBatch(
         batchItems,
         sourceLang,
         targetLang
       )
 
-      // Apply translations to feed metadata
       if (feed.title && !excludeFeedTitle && translations.has('feed-title')) {
         feed.title = translations.get('feed-title') ?? feed.title
       }
@@ -91,7 +103,6 @@ export class RSSProcessor {
           translations.get('feed-description') ?? feed.description
       }
 
-      // Apply translations to feed items
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (feed.items?.length) {
         for (const [index, item] of feed.items.entries()) {
@@ -123,10 +134,9 @@ export class RSSProcessor {
         }
       }
 
-      // Convert back to XML
       return this.feedToXML(feed)
     } catch (error) {
-      // 呼び出し元が個別の HTTP ステータスに対応付けるエラーは握りつぶさない
+      // Rethrow errors the caller maps to specific HTTP statuses
       if (
         error instanceof UnsafeUrlError ||
         error instanceof FetchTimeoutError ||
@@ -140,7 +150,7 @@ export class RSSProcessor {
     }
   }
 
-  /** RSS オブジェクトを XML 文字列へ変換する。 */
+  /** Serializes the feed as RSS 2.0 XML (CDATA enabled; `content:encoded` and `dc:creator` only when present). */
   private feedToXML(feed: RSSParser.Output<RSSItem>): string {
     const feedData = feed as RSSFeed
     const rssObject: RSSObject = {
@@ -161,7 +171,6 @@ export class RSSProcessor {
       },
     }
 
-    // Add items
     if (feedData.items && feedData.items.length > 0) {
       rssObject.rss.channel.item = feedData.items.map((item: RSSItem) => {
         const rssItem: {
@@ -185,12 +194,10 @@ export class RSSProcessor {
           guid: item.guid ?? item.link ?? '',
         }
 
-        // Add content:encoded if available
         if (item.contentEncoded) {
           rssItem['content:encoded'] = item.contentEncoded
         }
 
-        // Add author if available
         if (item.creator) {
           rssItem['dc:creator'] = item.creator
         }

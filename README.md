@@ -1,321 +1,229 @@
 # RSS Translator Bridge
 
-RSS フィードを多言語翻訳するための高速ブリッジサーバーです。Google Apps Script（GAS）翻訳 API を使用してバッチ翻訳を行い、翻訳済みの RSS フィードを XML 形式で配信します。
+A Fastify server that translates RSS feeds.
+It fetches a feed, translates its text in batches through a Google Apps Script (GAS) translation API, and returns the result as RSS 2.0 XML.
+It also serves a small web UI that shows the original and translated XML.
 
-## ✨ 特徴
+## Features
 
-- 🚀 **高速バッチ翻訳**: 複数項目を一括処理して高いパフォーマンスを実現
-- 🌐 **多言語対応**: Google Translate を通じて 100+ 言語をサポート
-- 📦 **完全な RSS 互換性**: 元の RSS 構造とメタデータを完全に保持
-- ⚡ **サーバーレス対応**: Vercel での高可用性デプロイに最適化
-- 🛡️ **エラー耐性**: 翻訳失敗時は元テキストをフォールバックとして使用
-- 📝 **HTML コンテンツ対応**: `content:encoded`、`description`、`summary` を適切に処理
+- Batch translation: all texts of a feed are sent to GAS in one request.
+- Fallback: when a translation fails, the original text is kept.
+- HTML-aware: every text is sent to GAS with `mode: "html"`, so markup in `content:encoded`, `description` and similar fields is handled as HTML.
+- Caching: translations are cached in memory, and translated responses carry a CDN-oriented `Cache-Control` header.
+- SSRF protection: only public `http:`/`https:` destinations are fetched (see [Fetch restrictions](#fetch-restrictions)).
+- Serverless: runs on Vercel through `api/serverless.ts`, and as a plain Node.js server through `src/index.ts`.
 
-## 🚀 クイックスタート
+## Usage
 
-### 使用方法
-
-```
-GET https://your-domain.com/?url=RSS_FEED_URL&sourceLang=SOURCE&targetLang=TARGET
-```
-
-**例**: 英語の RSS フィードを日本語に翻訳
+Start the server (see [Development](#development)) and request `/api`:
 
 ```
-https://your-domain.com/?url=https://example.com/feed.xml&sourceLang=en&targetLang=ja
+GET /api?url=<feed URL>&sourceLang=<code>&targetLang=<code>
 ```
 
-### パラメータ
-
-| パラメータ   | 必須 | 説明                                                                                  | デフォルト |
-| ------------ | ---- | ------------------------------------------------------------------------------------- | ---------- |
-| `url`        | ✅   | 翻訳対象の RSS フィード URL                                                           | -          |
-| `sourceLang` | ❌   | ソース言語コード ([ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)) | `auto`     |
-| `targetLang` | ❌   | ターゲット言語コード                                                                  | `ja`       |
-
-### サポート言語
-
-Google Translate API がサポートする全ての言語に対応：
-
-| 言語コード | 言語名     | 言語コード | 言語名     |
-| ---------- | ---------- | ---------- | ---------- |
-| `auto`     | 自動検出   | `ja`       | 日本語     |
-| `en`       | 英語       | `ko`       | 韓国語     |
-| `zh`       | 中国語     | `fr`       | フランス語 |
-| `es`       | スペイン語 | `de`       | ドイツ語   |
-
-## 🛠️ 開発環境
-
-### 必要な環境
-
-- **Node.js**: 18.0.0 以上
-- **パッケージマネージャー**: pnpm (推奨)
-- **Google Apps Script**: 翻訳 API エンドポイント
-
-### セットアップ
-
-1. **リポジトリのクローン**
-
-   ```bash
-   git clone https://github.com/book000/rss-translator-bridge.git
-   cd rss-translator-bridge
-   ```
-
-2. **依存関係のインストール**
-
-   ```bash
-   pnpm install
-   ```
-
-3. **環境変数の設定**
-
-   ```bash
-   cp .env.example .env
-   # .env ファイルを編集して環境変数を設定
-   ```
-
-4. **開発サーバーの起動**
-   ```bash
-   pnpm dev
-   ```
-
-### 環境変数
-
-| 変数名                             | 必須 | 説明                               | デフォルト |
-| ---------------------------------- | ---- | ---------------------------------- | ---------- |
-| `GAS_URL`                          | ✅   | Google Apps Script 翻訳 API の URL | -          |
-| `PORT`                             | ❌   | サーバーポート                     | `3000`     |
-| `HOST`                             | ❌   | サーバーホスト                     | `0.0.0.0`  |
-| `DEFAULT_SOURCE_LANG`              | ❌   | デフォルトソース言語               | `auto`     |
-| `DEFAULT_TARGET_LANG`              | ❌   | デフォルトターゲット言語           | `ja`       |
-| `DEFAULT_EXCLUDE_FEED_TITLE`       | ❌   | RSS フィードタイトルを翻訳しない   | `true`     |
-| `DEFAULT_EXCLUDE_ITEM_TITLE`       | ❌   | RSS 記事タイトルを翻訳しない       | `false`    |
-| `TRANSLATION_CACHE_ENABLED`        | ❌   | 翻訳キャッシュを有効にする         | `true`     |
-| `TRANSLATION_CACHE_TTL_MS`         | ❌   | 翻訳キャッシュの TTL (ms)          | `21600000` |
-| `TRANSLATION_CACHE_MAX_ITEMS`      | ❌   | 翻訳キャッシュの最大件数           | `1000`     |
-| `CDN_CACHE_ENABLED`                | ❌   | CDN キャッシュを有効にする         | `true`     |
-| `CDN_CACHE_S_MAXAGE`               | ❌   | CDN キャッシュの TTL (秒)          | `300`      |
-| `CDN_CACHE_STALE_WHILE_REVALIDATE` | ❌   | CDN 再検証の猶予時間 (秒)          | `60`       |
-
-### 開発コマンド
+For example, to translate an English feed into Japanese:
 
 ```bash
-# 開発サーバー（ホットリロード）
-pnpm dev
-
-# プロダクションビルド
-pnpm build
-
-# プロダクションサーバー
-pnpm start
-
-# 品質チェック
-pnpm lint              # Prettier + ESLint + TypeScript
-pnpm lint:prettier     # Prettier チェック
-pnpm lint:eslint       # ESLint チェック
-pnpm lint:tsc          # TypeScript 型チェック
-
-# 自動修正
-pnpm fix               # Prettier + ESLint 自動修正
-pnpm fix:prettier      # Prettier 自動修正
-pnpm fix:eslint        # ESLint 自動修正
-
-# テスト
-pnpm test              # 全テスト実行
-pnpm test:watch        # ウォッチモード
-pnpm test:coverage     # カバレッジ付きテスト
-
-# 型チェック
-pnpm typecheck         # TypeScript 型チェックのみ
+curl 'http://localhost:3000/api?url=https%3A%2F%2Fexample.com%2Ffeed.xml&sourceLang=en&targetLang=ja'
 ```
 
-## 🏗️ アーキテクチャ
+Opening `/` in a browser shows the web UI instead (`public/`), which calls `/api` and `/api/proxy`.
 
-### システム構成
+### Query parameters
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   RSS Client    │───▶│ Translator Bridge│───▶│  Google Apps    │
-│  (RSS Reader)   │    │   (Fastify)     │    │     Script      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │ Translated RSS  │
-                       │   (XML Output)  │
-                       └─────────────────┘
-```
+| Parameter          | Required | Description                                                                 | Default                                |
+| ------------------ | -------- | --------------------------------------------------------------------------- | -------------------------------------- |
+| `url`              | Yes      | URL of the feed to translate. Must be given once.                           | -                                      |
+| `sourceLang`       | No       | Source language code                                                        | `DEFAULT_SOURCE_LANG` (`auto`)         |
+| `targetLang`       | No       | Target language code                                                        | `DEFAULT_TARGET_LANG` (`ja`)           |
+| `excludeFeedTitle` | No       | `true` keeps the feed title untranslated. Any other value translates it.    | `DEFAULT_EXCLUDE_FEED_TITLE` (`true`)  |
+| `excludeItemTitle` | No       | `true` keeps the item titles untranslated. Any other value translates them. | `DEFAULT_EXCLUDE_ITEM_TITLE` (`false`) |
 
-### 主要コンポーネント
+Language codes are passed to the GAS API unchanged, so the supported values depend on the GAS script.
+The web UI offers `en`, `ja`, `ko`, `zh`, `es`, `fr` and `de`, plus `auto` for the source language.
 
-- **`src/index.ts`**: サーバーの起動
-- **`src/app.ts`**: Fastify アプリケーションとルーティング
-- **`src/safe-fetch.ts`**: 取得先を検証する RSS 取得処理
-- **`src/rss-processor.ts`**: RSS 解析・XML 再構築
-- **`src/translator.ts`**: GAS API バッチ翻訳
-- **`src/types.ts`**: TypeScript 型定義
-- **`src/config.ts`**: 環境変数管理
+## Development
 
-### データフロー
+Requirements:
 
-1. **RSS 取得**: 取得先を検証して外部 RSS フィードを取得し、`rss-parser` で解析
-2. **バッチ準備**: タイトル・本文・メタデータを翻訳項目として整理
-3. **バッチ翻訳**: GAS API に一括送信して高速翻訳
-4. **結果適用**: 翻訳結果を元の RSS 構造に適用
-5. **XML 出力**: `xml2js` で RSS XML として再構築・配信
-
-## 🚀 デプロイ
-
-### Vercel デプロイ
-
-1. **Vercel CLI のインストール**
-
-   ```bash
-   npm i -g vercel
-   ```
-
-2. **デプロイ実行**
-
-   ```bash
-   vercel
-   ```
-
-3. **環境変数の設定**
-   Vercel ダッシュボードで環境変数を設定
-
-### その他のプラットフォーム
-
-- **Netlify**: `netlify.toml` 設定済み
-- **Railway**: `railway.json` 設定済み
-- **Docker**: `Dockerfile` 提供
-
-## 🧪 テスト
-
-### テスト実行
+- Node.js (`engines` requires 18 or later; `.node-version` pins the version used for development)
+- pnpm (enforced by a `preinstall` script)
+- A deployed Google Apps Script translation API (see [GAS API contract](#gas-api-contract))
 
 ```bash
-# 全テスト実行
-pnpm test
-
-# ファイル指定テスト
-pnpm test rss-processor.test.ts
-
-# ウォッチモード
-pnpm test --watch
-
-# カバレッジ
-pnpm test --coverage
+pnpm install
+cp .env.example .env   # set GAS_URL
+pnpm dev               # tsx watch
 ```
 
-### テスト構成
+`pnpm start` runs the server once without watching.
+The server reads its settings from environment variables only; it does not load `.env` by itself, so export the variables in your shell before starting it, for example `set -a; source .env; set +a`.
 
-- **Unit Tests**: 各コンポーネントの単体テスト
-- **Integration Tests**: API エンドポイントの統合テスト
-- **Mocking**: axios・外部 API のモック化
-- **Coverage**: 高いテストカバレッジを維持
+| Command                   | Description                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `pnpm dev`                | Start the server with hot reload                                                         |
+| `pnpm start`              | Start the server                                                                         |
+| `pnpm build`              | Compile with `tsc` to `dist/`                                                            |
+| `pnpm lint`               | Run Prettier, ESLint and the TypeScript type check                                       |
+| `pnpm fix`                | Run Prettier and ESLint with auto-fix                                                    |
+| `pnpm test`               | Run the Jest tests; pass a file name to run one, for example `pnpm test translator.test` |
+| `pnpm test -- --coverage` | Run the tests with coverage                                                              |
+| `pnpm typecheck`          | Type check only (`tsc --noEmit`)                                                         |
 
-## 📚 API リファレンス
+## Configuration
 
-### `GET /`
+| Variable                           | Required | Description                                                           | Default    |
+| ---------------------------------- | -------- | --------------------------------------------------------------------- | ---------- |
+| `GAS_URL`                          | Yes      | URL of the GAS translation API. The server fails to start without it. | -          |
+| `PORT`                             | No       | Listen port                                                           | `3000`     |
+| `HOST`                             | No       | Listen host                                                           | `0.0.0.0`  |
+| `DEFAULT_SOURCE_LANG`              | No       | Default for `sourceLang`                                              | `auto`     |
+| `DEFAULT_TARGET_LANG`              | No       | Default for `targetLang`                                              | `ja`       |
+| `DEFAULT_EXCLUDE_FEED_TITLE`       | No       | Default for `excludeFeedTitle`. Only `false` disables it.             | `true`     |
+| `DEFAULT_EXCLUDE_ITEM_TITLE`       | No       | Default for `excludeItemTitle`. Only `true` enables it.               | `false`    |
+| `TRANSLATION_CACHE_ENABLED`        | No       | Enable the translation cache. Only `false` disables it.               | `true`     |
+| `TRANSLATION_CACHE_TTL_MS`         | No       | Translation cache TTL in milliseconds                                 | `21600000` |
+| `TRANSLATION_CACHE_MAX_ITEMS`      | No       | Maximum number of cached translations (LRU eviction)                  | `1000`     |
+| `CDN_CACHE_ENABLED`                | No       | Send a CDN `Cache-Control` header. Only `false` disables it.          | `true`     |
+| `CDN_CACHE_S_MAXAGE`               | No       | `s-maxage` in seconds                                                 | `300`      |
+| `CDN_CACHE_STALE_WHILE_REVALIDATE` | No       | `stale-while-revalidate` in seconds                                   | `60`       |
 
-RSS フィードを翻訳して返すメインエンドポイント
+The translation cache is per process.
+Cached entries are keyed by the language pair and a SHA-256 hash of the text.
 
-**リクエスト**
+When the CDN cache is enabled, `/api` success responses carry `Cache-Control: public, max-age=0, s-maxage=<S_MAXAGE>, stale-while-revalidate=<STALE_WHILE_REVALIDATE>`; when disabled they carry `no-store`.
+`/api/proxy` sets no `Cache-Control` header.
 
+## API
+
+### `GET /api`
+
+Translates a feed and returns RSS 2.0 XML (`Content-Type: application/rss+xml; charset=utf-8`).
+
+The output contains `title`, `link`, `description`, `language` and `lastBuildDate` for the channel, and `title`, `link`, `description`, `pubDate` and `guid` for each item.
+`content:encoded` and `dc:creator` are added to an item only when the source has them.
+Item bodies are taken from the first available of `content:encoded`, `content`, `description` and `summary`, and are translated in place.
+All items are translated; there is no item limit.
+
+Errors are returned as JSON:
+
+```json
+{ "status": "error", "error": "URL parameter is required" }
 ```
-GET /?url=https://example.com/feed.xml&sourceLang=en&targetLang=ja
-```
 
-**レスポンス**
+### `GET /api/proxy?url=<feed URL>`
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>翻訳されたフィードタイトル</title>
-    <description>翻訳された説明</description>
-    <item>
-      <title>翻訳された記事タイトル</title>
-      <description>翻訳された記事内容</description>
-    </item>
-  </channel>
-</rss>
-```
-
-### `GET /api` と `GET /api/proxy`
-
-`GET /api` は RSS フィードを翻訳して返すエンドポイントです。`GET /api/proxy?url=...` は翻訳前の元の RSS を取得して返します。
-
-#### 取得先の制限
-
-どちらのエンドポイントも、`url` で指定された宛先に次の制限をかけて取得します。
-
-- `http:` と `https:` だけを許可します。ユーザー情報を含む URL (`http://user:pass@host/`) は拒否します。
-- ループバック・プライベート・リンクローカルなどの内部アドレスへの接続を拒否します。ホスト名は、接続に使われる名前解決の結果を検証します。1 つでも内部アドレスがあれば拒否します。
-- リダイレクトは最大 5 回まで追従し、リダイレクト先ごとにスキームと宛先を検証します。
-- DNS 解決・リダイレクト・本文の受信を合わせて 5 秒でタイムアウトします。
-- 展開後の応答サイズは 5 MiB までです。
-
-#### エラーレスポンス
-
-| ステータス | 条件                                                                   |
-| ---------- | ---------------------------------------------------------------------- |
-| 400        | `url` が未指定、複数指定、または不正なスキーム・内部アドレスなどの宛先 |
-| 502        | 応答サイズの上限超過、リダイレクトの回数超過・`Location` なし          |
-| 504        | 取得が 5 秒の期限を超えた                                              |
-| 500        | 上記以外の取得・解析・翻訳の失敗                                       |
-
-`/api/proxy` は、上流が 2xx 以外を返した場合にそのステータスを返します。
+Returns the original, untranslated feed body with `Content-Type: application/rss+xml; charset=utf-8`.
+The web UI uses it to show the original feed without hitting CORS restrictions.
+Errors are returned as `{ "error": "<message>" }`.
+When the upstream responds with a non-2xx status, that status is returned with `Failed to fetch RSS: <status text>`.
 
 ### `GET /health`
 
-ヘルスチェックエンドポイント
+```json
+{ "status": "ok", "timestamp": "2026-01-01T00:00:00.000Z" }
+```
 
-**レスポンス**
+### Error statuses
+
+Both `/api` and `/api/proxy` map fetch errors to the following statuses:
+
+| Status | Condition                                                                                               |
+| ------ | ------------------------------------------------------------------------------------------------------- |
+| 400    | `url` is missing or given more than once, or the destination is rejected (scheme, credentials, address) |
+| 502    | The response exceeds the size limit, or a redirect has no `Location` or exceeds the redirect limit      |
+| 504    | The fetch exceeds the 5 second deadline                                                                 |
+| 500    | Any other fetch or parse failure (translation failures fall back to the original text)                  |
+
+### Fetch restrictions
+
+Every URL is fetched through `src/safe-fetch.ts`, which applies the following to the first request and to each redirect target:
+
+- Only `http:` and `https:` are allowed, and URLs with credentials (`http://user:pass@host/`) are rejected.
+- Connections to loopback, private, link-local and other internal addresses are rejected.
+  The check runs on the addresses actually used for the connection, and a hostname is rejected if any of its addresses is internal.
+- At most 5 redirects are followed.
+- DNS resolution, redirects and body download share a 5 second deadline.
+- The decompressed response may be at most 5 MiB.
+- No headers from the caller (such as `Cookie` or `Authorization`) are forwarded.
+
+## GAS API contract
+
+The server POSTs JSON to `GAS_URL`.
+The request and response types are defined in `src/types.ts`.
+
+Batch request (used by `/api`; 25 second timeout):
 
 ```json
 {
-  "status": "ok",
-  "timestamp": "2025-06-30T08:00:00.000Z"
+  "batch": true,
+  "before": "en",
+  "after": "ja",
+  "texts": [{ "id": "feed-description", "text": "..." }],
+  "mode": "html"
 }
 ```
 
-## 🔧 トラブルシューティング
+Batch response:
 
-### よくある問題
+```json
+{
+  "status": true,
+  "results": [
+    {
+      "id": "feed-description",
+      "original": "...",
+      "translated": "...",
+      "success": true
+    }
+  ],
+  "processed": 1,
+  "total": 1,
+  "executionTime": 120
+}
+```
 
-**Q: 翻訳が失敗する**
+Items with `success: false` fall back to their original text.
+If the request fails entirely (network error, timeout, non-2xx), every pending item falls back to its original text and `/api` still returns the feed.
 
-- GAS_URL が正しく設定されているか確認
-- GAS エンドポイントが正常に動作しているか確認
+## Architecture
 
-**Q: RSS フィードが取得できない**
+```
+Client -> GET /api -> RSSProcessor -> safeFetchText -> source feed
+                          |
+                          +-> Translator -> GAS API (batch, cached)
+                          |
+                          +-> xml2js -> translated RSS XML
+```
 
-- 対象 URL が有効な RSS フィードか確認
-- 内部アドレス (`localhost`、プライベート IP など) は取得できません (400)
-- 5 秒以内に応答しない、または 5 MiB を超えるフィードは取得できません (504 / 502)
-- CORS 設定を確認
+| File                       | Role                                                                 |
+| -------------------------- | -------------------------------------------------------------------- |
+| `src/index.ts`             | Starts the server and exposes `getApp()`                             |
+| `src/app.ts`               | Fastify app, routes and error-to-status mapping                      |
+| `src/safe-fetch.ts`        | SSRF-safe fetch                                                      |
+| `src/rss-processor.ts`     | Feed parsing (`rss-parser`), translation batching and XML rebuilding |
+| `src/translator.ts`        | GAS API client with timeout, fallback and cache                      |
+| `src/translation-cache.ts` | In-memory LRU cache with TTL                                         |
+| `src/cache-control.ts`     | `Cache-Control` header builder                                       |
+| `src/config.ts`            | Environment variable loading                                         |
+| `src/types.ts`             | Shared types                                                         |
+| `api/serverless.ts`        | Vercel entry point                                                   |
+| `public/`                  | Web UI                                                               |
 
-**Q: Vercel で 30 秒タイムアウト**
+## Deployment
 
-- バッチサイズを調整（GAS 側のタイムアウト: 25 秒）
-- 大きなフィードは分割処理を検討
+The repository is set up for Vercel: `vercel.json` routes every path to `api/serverless.ts` and sets `maxDuration` to 30 seconds.
+Set `GAS_URL` (and any other variables) in the Vercel project settings, then deploy with the Vercel CLI (`vercel`).
+The GAS batch timeout (25 seconds) is chosen to fit within that 30 second limit, so very large feeds can still time out.
 
-## 🤝 コントリビューション
+The in-memory translation cache only lives as long as a function instance.
 
-1. Fork this repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Tests
 
-### 開発ガイドライン
+Jest with ts-jest; tests are in `src/__tests__/`.
+External dependencies (the GAS `fetch` call, `rss-parser`, `safeFetchText`) are mocked.
+CI (`.github/workflows/ci.yml`) runs lint and tests through a reusable workflow from `book000/templates`.
 
-- TypeScript strict モード準拠
-- ESLint + Prettier による品質管理
-- Jest による包括的なテスト
-- Conventional Commits によるコミットメッセージ
+## License
 
-## 📄 ライセンス
-
-MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください。
+MIT, as declared in `package.json`.

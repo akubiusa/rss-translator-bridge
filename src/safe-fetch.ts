@@ -28,9 +28,9 @@ const BLOCKED_IPV4_SUBNETS: [string, number][] = [
   ['240.0.0.0', 4],
 ]
 
-// ::ffff:0:0/96 (IPv4-mapped) は登録しない。BlockList は IPv4 を内部で IPv4-mapped
-// として照合するため、登録すると公開 IPv4 を含むすべての IPv4 が一致してしまう。
-// IPv4-mapped は isIPv4MappedAddress で別途拒否する。
+// Do not register ::ffff:0:0/96 (IPv4-mapped) here.
+// BlockList matches IPv4 addresses internally as IPv4-mapped, so registering it would match every IPv4 address, public ones included.
+// IPv4-mapped addresses are rejected separately by isIPv4MappedAddress.
 const BLOCKED_IPV6_SUBNETS: [string, number][] = [
   ['::', 96],
   ['::ffff:0:0:0', 96],
@@ -55,9 +55,7 @@ for (const [network, prefix] of BLOCKED_IPV6_SUBNETS) {
   blockList.addSubnet(network, prefix, 'ipv6')
 }
 
-/**
- * 取得処理の基底エラー
- */
+/** Base class of the errors thrown by `safeFetchText`. */
 export class SafeFetchError extends Error {
   constructor(message: string) {
     super(message)
@@ -66,9 +64,9 @@ export class SafeFetchError extends Error {
 }
 
 /**
- * スキーム・資格情報・宛先の検証で拒否されたことを表すエラー
+ * The scheme, credentials or destination failed validation.
  *
- * message には解決された IP を含めない。IP は address に保持し、サーバー側のログにだけ出す。
+ * The message never contains the resolved IP. It is kept in `address` and only logged server-side.
  */
 export class UnsafeUrlError extends SafeFetchError {
   readonly address?: string
@@ -79,24 +77,16 @@ export class UnsafeUrlError extends SafeFetchError {
   }
 }
 
-/**
- * リダイレクトの回数超過、または Location ヘッダーがないことを表すエラー
- */
+/** Too many redirects, or a redirect without a `Location` header. */
 export class RedirectError extends SafeFetchError {}
 
-/**
- * 総タイムアウトを超過したことを表すエラー
- */
+/** The total deadline was exceeded. */
 export class FetchTimeoutError extends SafeFetchError {}
 
-/**
- * 展開後の応答サイズが上限を超えたことを表すエラー
- */
+/** The decompressed response exceeded the size limit. */
 export class ResponseTooLargeError extends SafeFetchError {}
 
-/**
- * 上流が 2xx 以外のステータスを返したことを表すエラー
- */
+/** The upstream responded with a non-2xx status. */
 export class HttpStatusError extends SafeFetchError {
   readonly status: number
   readonly statusText: string
@@ -108,19 +98,17 @@ export class HttpStatusError extends SafeFetchError {
   }
 }
 
-/**
- * safeFetchText の動作を調整するオプション
- */
+/** Options for `safeFetchText`. */
 export interface SafeFetchOptions {
-  /** DNS 解決・全リダイレクトホップ・本文受信完了までの総期限 (ミリ秒) */
+  /** Total deadline in milliseconds covering DNS resolution, all redirect hops and receiving the body. Default 5000. */
   timeoutMs?: number
-  /** 展開後の応答サイズの上限 (バイト) */
+  /** Maximum decompressed response size in bytes. Default 5 MiB. */
   maxBytes?: number
-  /** 追従するリダイレクトの最大回数 */
+  /** Maximum number of redirects to follow. Default 5. */
   maxRedirects?: number
-  /** 検証ラッパーが包む下位のリゾルバー。テストで差し替える */
+  /** Underlying resolver wrapped by the validating lookup. Replaced in tests. */
   lookup?: net.LookupFunction
-  /** 禁止アドレスの判定。テストで差し替える */
+  /** Blocked-address check. Replaced in tests. */
   isBlockedAddress?: (address: string) => boolean
 }
 
@@ -129,10 +117,10 @@ const defaultLookup: net.LookupFunction = (hostname, options, callback) => {
 }
 
 /**
- * IPv4-mapped IPv6 アドレス (::ffff:x:y) かどうかを判定する
+ * Returns whether an IPv6 address is IPv4-mapped (`::ffff:x:y`).
  *
- * @param address IPv6 アドレス
- * @returns IPv4-mapped なら true
+ * @param address IPv6 address
+ * @returns True if IPv4-mapped
  */
 function isIPv4MappedAddress(address: string): boolean {
   const normalized = new URL(`http://[${address}]/`).hostname
@@ -140,13 +128,13 @@ function isIPv4MappedAddress(address: string): boolean {
 }
 
 /**
- * 本文を Content-Type の charset で文字列に変換する
+ * Decodes the body using the `charset` of the Content-Type header.
  *
- * charset の指定がない場合と、未対応のラベルの場合は UTF-8 として扱う。
+ * Falls back to UTF-8 when no charset is given or the label is unsupported.
  *
- * @param body 展開済みの本文
- * @param contentType Content-Type ヘッダー
- * @returns 文字列にした本文
+ * @param body Decompressed body
+ * @param contentType Content-Type header
+ * @returns The decoded body
  */
 function decodeBody(body: Buffer, contentType: string | undefined): string {
   const label = /charset\s*=\s*["']?([^\s"';]+)/i.exec(contentType ?? '')?.[1]
@@ -154,7 +142,7 @@ function decodeBody(body: Buffer, contentType: string | undefined): string {
     try {
       return new TextDecoder(label).decode(body)
     } catch (error) {
-      // 未対応のラベルだけを UTF-8 にフォールバックする。それ以外は握りつぶさない
+      // Fall back to UTF-8 only for unsupported labels; rethrow anything else
       if (
         (error as NodeJS.ErrnoException).code !== 'ERR_ENCODING_NOT_SUPPORTED'
       ) {
@@ -166,12 +154,12 @@ function decodeBody(body: Buffer, contentType: string | undefined): string {
 }
 
 /**
- * 接続を禁止するアドレスかどうかを判定する
+ * Returns whether connecting to an address is forbidden.
  *
- * IP として不正な文字列 (ゾーン ID 付きを含む) も禁止側に倒す。
+ * Strings that are not valid IPs (including those with a zone ID) are treated as blocked.
  *
- * @param address IPv4 または IPv6 アドレス
- * @returns 禁止アドレスなら true
+ * @param address IPv4 or IPv6 address
+ * @returns True if blocked
  */
 export function isBlockedAddress(address: string): boolean {
   if (address.includes('%')) {
@@ -188,14 +176,14 @@ export function isBlockedAddress(address: string): boolean {
 }
 
 /**
- * 接続時の名前解決結果を検証する lookup を作る
+ * Creates a lookup that validates the resolution result used for the actual connection.
  *
- * 事前に別途名前解決して検証すると、検証後に解決結果が変わる DNS リバインディングが
- * 成立するため、実際の接続に使われる解決結果そのものを検証する。
+ * Resolving and validating separately beforehand would allow DNS rebinding (the result changing after validation), so the lookup that the connection uses is the one validated.
+ * Every resolved address must be allowed, otherwise the lookup fails.
  *
- * @param resolve 下位のリゾルバー
- * @param isBlocked 禁止アドレスの判定
- * @returns http(s).request の lookup オプションに渡す関数
+ * @param resolve Underlying resolver
+ * @param isBlocked Blocked-address check
+ * @returns A function for the `lookup` option of `http(s).request`
  */
 export function createGuardedLookup(
   resolve: net.LookupFunction,
@@ -230,14 +218,15 @@ export function createGuardedLookup(
 }
 
 /**
- * 取得先の URL を解析し、スキーム・資格情報・IP リテラルを検証する
+ * Parses a URL and validates its scheme, credentials and IP literal.
  *
- * IP リテラルのホストでは lookup が呼ばれないため、ここで検証する。
+ * Lookup is not called for IP-literal hosts, so they are validated here.
  *
- * @param rawUrl 取得先の URL 文字列
- * @param base 相対 URL の解決に使う URL
- * @param isBlocked 禁止アドレスの判定
- * @returns 検証済みの URL
+ * @param rawUrl URL string to fetch
+ * @param base URL used to resolve a relative URL
+ * @param isBlocked Blocked-address check
+ * @returns The validated URL
+ * @throws {UnsafeUrlError} When the URL is invalid or not allowed
  */
 function parseAndValidateUrl(
   rawUrl: string,
@@ -266,15 +255,15 @@ function parseAndValidateUrl(
 }
 
 /**
- * 公開された宛先にだけ接続して URL の本文を取得する
+ * Fetches the body of a URL, connecting only to public destinations (SSRF protection).
  *
- * 各ホップ (最初の URL とすべてのリダイレクト先) で、スキーム・宛先 IP を検証する。
- * Cookie や Authorization など呼び出し元由来のヘッダーは送らない。
+ * The scheme and destination IP are validated at every hop (the first URL and each redirect target).
+ * No caller-supplied headers such as Cookie or Authorization are sent.
  *
- * @param url 取得先の URL
- * @param options 上限やテスト用の差し替え
- * @returns UTF-8 として解釈した本文
- * @throws {SafeFetchError} 検証の拒否、タイムアウト、サイズ超過、リダイレクト異常、非 2xx 応答
+ * @param url URL to fetch
+ * @param options Limits and test overrides
+ * @returns The body, decoded with the response charset (UTF-8 by default)
+ * @throws {SafeFetchError} For rejected destinations, timeouts, oversized responses, redirect errors, unsupported content encodings and non-2xx responses. Network and decompression errors propagate as they are.
  */
 export function safeFetchText(
   url: string,
@@ -332,7 +321,7 @@ export function safeFetchText(
       const status = response.statusCode ?? 0
 
       if (REDIRECT_STATUSES.has(status)) {
-        // resume ではなく destroy で破棄する。本文を返し続ける相手にソケットを開けたままにしない
+        // Destroy rather than resume, so the socket is not kept open for a peer that keeps sending a body
         response.destroy()
         const location = response.headers.location
         if (!location) {
@@ -358,7 +347,7 @@ export function safeFetchText(
         return
       }
 
-      // 圧縮後のサイズによる早期拒否。判定の正は展開後のバイト数
+      // Early rejection by compressed size. The decompressed byte count is authoritative
       const contentLength = Number(response.headers['content-length'])
       if (Number.isFinite(contentLength) && contentLength > maxBytes) {
         fail(
@@ -369,7 +358,7 @@ export function safeFetchText(
         return
       }
 
-      // 本文がない応答に Content-Encoding が付いていても、展開器は空入力でエラーになる
+      // A decompressor errors on empty input even if a bodiless response carries a Content-Encoding
       const hasBody =
         status !== 204 && response.headers['content-length'] !== '0'
       const encoding = hasBody
@@ -423,7 +412,7 @@ export function safeFetchText(
           fail(error)
           return
         }
-        // pipeline のコールバック内の例外は Promise に届かないため、ここで失敗として扱う
+        // An exception thrown in a pipeline callback never reaches the Promise, so treat it as a failure here
         try {
           succeed(
             decodeBody(Buffer.concat(chunks), response.headers['content-type'])
@@ -445,7 +434,7 @@ export function safeFetchText(
         target,
         {
           method: 'GET',
-          // キープアライブの再利用ソケットでは lookup が呼ばれず、検証を迂回されるため
+          // A keep-alive socket that is reused skips lookup and would bypass validation
           agent: false,
           lookup: guardedLookup,
           headers: {
@@ -461,7 +450,7 @@ export function safeFetchText(
       )
       currentRequest = request
       request.on('error', (error) => {
-        // 次のホップへ進んだ後の古いリクエストのエラーは無視する
+        // Ignore errors from a stale request after moving on to the next hop
         if (currentRequest === request) {
           fail(error)
         }
