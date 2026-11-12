@@ -1,7 +1,6 @@
 import {
   TranslateRequest,
   TranslateResponse,
-  GASTranslateRequest,
   GASBatchTranslateRequest,
   GASBatchTranslateResponse,
   BatchTranslateItem,
@@ -45,22 +44,6 @@ describe('Type Definitions', () => {
 
       expect(errorResponse.status).toBe('error')
       expect(errorResponse.error).toBe('URL parameter is required')
-    })
-  })
-
-  describe('GASTranslateRequest', () => {
-    it('should validate GAS translate request structure', () => {
-      const gasRequest: GASTranslateRequest = {
-        before: 'en',
-        after: 'ja',
-        text: 'Hello world',
-        mode: 'html',
-      }
-
-      expect(gasRequest.before).toBe('en')
-      expect(gasRequest.after).toBe('ja')
-      expect(gasRequest.text).toBe('Hello world')
-      expect(gasRequest.mode).toBe('html')
     })
   })
 

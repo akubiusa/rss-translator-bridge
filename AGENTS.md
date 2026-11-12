@@ -57,7 +57,7 @@ pnpm test -- --coverage
 - Fetch every user-supplied URL with `safeFetchText`; never call `fetch` or `RSSParser.parseURL` on it directly.
   It allows only `http:`/`https:`, rejects internal addresses (validated on the address actually connected to, at every redirect hop), and limits the total time (5 s), decompressed size (5 MiB) and redirects (5).
 - Translation failures must fall back to the original text rather than failing the request or returning empty values.
-- GAS calls must time out inside Vercel's 30 s function limit (`maxDuration` in `vercel.json`): 25 s for a batch, 5 s for a single text.
+- GAS calls must time out inside Vercel's 30 s function limit (`maxDuration` in `vercel.json`): 25 s for a batch.
 - Do not hardcode `GAS_URL` or other secrets or personal data in code, logs or tests.
 
 ## Tests

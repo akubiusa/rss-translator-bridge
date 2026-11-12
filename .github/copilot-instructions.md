@@ -11,7 +11,7 @@ This file is only a review checklist.
 ## Review focus
 
 - Translation failures fall back to the original text; flag changes that return empty values, `undefined` or swallow errors silently.
-- GAS timeouts (batch 25 s, single 5 s) stay within Vercel's 30 s limit (`vercel.json`); flag changes that raise them or remove the `AbortController`.
+- The GAS batch timeout (25 s) stays within Vercel's 30 s limit (`vercel.json`); flag changes that raise it or remove the `AbortController`.
 - User-supplied URLs are fetched only through `safeFetchText`; flag direct `fetch` or `RSSParser.parseURL` on them, and any weakening of its checks.
 - Flag new `any`, needless `as` assertions and `@ts-ignore`.
 - New environment variables are read only in `src/config.ts` and documented in `.env.example` and `README.md`.
