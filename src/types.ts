@@ -41,19 +41,6 @@ export interface TranslateResponse {
   error?: string
 }
 
-/** Request body for translating a single text with the GAS API. */
-export interface GASTranslateRequest {
-  before: string
-  after: string
-  text: string
-  mode: 'html'
-}
-
-/** Single-text GAS response shape. Unused: `Translator.translate` reads `{ response?: { status?, result? } }` instead. */
-export interface GASTranslateResponse {
-  text: string
-}
-
 /** An item to translate in a batch. */
 export interface BatchTranslateItem {
   id: string
