@@ -46,15 +46,6 @@ describe('Type Definitions', () => {
       expect(errorResponse.status).toBe('error')
       expect(errorResponse.error).toBe('URL parameter is required')
     })
-
-    it('should validate success response structure', () => {
-      const successResponse: TranslateResponse = {
-        status: 'success',
-      }
-
-      expect(successResponse.status).toBe('success')
-      expect(successResponse.error).toBeUndefined()
-    })
   })
 
   describe('GASTranslateRequest', () => {

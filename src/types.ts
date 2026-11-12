@@ -36,8 +36,7 @@ export interface TranslateRequest {
 
 /** JSON body of `GET /api` responses. Only error bodies are returned today; success responses are RSS XML. */
 export interface TranslateResponse {
-  status: 'success' | 'error'
-  data?: string
+  status: 'error'
   error?: string
 }
 
