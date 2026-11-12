@@ -78,8 +78,7 @@ export class Translator {
   /**
    * Translates multiple texts in one GAS request, serving cache hits locally.
    *
-   * Items GAS reports as failed fall back to their original text. If the whole request fails, every pending item falls back.
-   * If GAS does not report success (HTTP 200 with a truthy `status`), the pending items are left out of the returned map.
+   * Items GAS reports as failed fall back to their original text. If the whole request fails, or GAS does not report success (HTTP 200 with a truthy `status`), every pending item falls back.
    *
    * @param items Texts to translate, each with an id
    * @param sourceLang Source language code
@@ -171,10 +170,12 @@ export class Translator {
         console.log(`Client received ${results.size} translated items`)
       } else {
         console.error('GAS returned error status:', data)
+        for (const item of pendingItems) {
+          results.set(item.id, item.text)
+        }
       }
     } catch (error) {
       console.error('Batch translation error:', error)
-      // Fall back to the original text
       for (const item of pendingItems) {
         results.set(item.id, item.text)
       }
