@@ -266,7 +266,7 @@ describe('Translator - Batch Translation', () => {
     consoleSpy.mockRestore()
   })
 
-  it('should return empty map when response status is false', async () => {
+  it('should return fallback texts when response status is false', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
       // no-op
     })
@@ -282,7 +282,33 @@ describe('Translator - Batch Translation', () => {
 
     const result = await translator.translateBatch(mockBatchItems, 'en', 'ja')
 
-    expect(result.size).toBe(0)
+    expect(result.size).toBe(3)
+    expect(result.get('item1')).toBe('Hello')
+    expect(result.get('item2')).toBe('World')
+    expect(result.get('item3')).toBe('How are you?')
+    consoleSpy.mockRestore()
+  })
+
+  it('should return fallback texts on a non-200 2xx response', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+      // no-op
+    })
+    mockedFetch.mockResolvedValueOnce(
+      mockFetchResponse(204, {
+        status: true,
+        processed: 0,
+        total: 3,
+        executionTime: 0,
+        results: [],
+      })
+    )
+
+    const result = await translator.translateBatch(mockBatchItems, 'en', 'ja')
+
+    expect(result.size).toBe(3)
+    expect(result.get('item1')).toBe('Hello')
+    expect(result.get('item2')).toBe('World')
+    expect(result.get('item3')).toBe('How are you?')
     consoleSpy.mockRestore()
   })
 
