@@ -57,7 +57,8 @@ pnpm test -- --coverage
 - Fetch every user-supplied URL with `safeFetchText`; never call `fetch` or `RSSParser.parseURL` on it directly.
   It allows only `http:`/`https:`, rejects internal addresses (validated on the address actually connected to, at every redirect hop), and limits the total time (5 s), decompressed size (5 MiB) and redirects (5).
 - Translation failures must fall back to the original text rather than failing the request or returning empty values.
-- GAS calls must time out inside Vercel's 30 s function limit (`maxDuration` in `vercel.json`): 25 s for a batch.
+- Fetching, parsing and translating a feed share a 27 s per-request budget (Vercel's 30 s `maxDuration` in `vercel.json` minus 3 s for building and sending the response), set by `REQUEST_BUDGET_MS` in `src/rss-processor.ts`.
+  The GAS batch timeout is the smaller of 25 s (`BATCH_TIMEOUT_MS` in `src/translator.ts`) and the budget left after the feed fetch, and it also covers reading the response body.
 - Do not hardcode `GAS_URL` or other secrets or personal data in code, logs or tests.
 
 ## Tests

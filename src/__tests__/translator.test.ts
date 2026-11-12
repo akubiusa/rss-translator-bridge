@@ -292,3 +292,141 @@ describe('Translator - Batch Translation', () => {
     expect(mockedFetch).not.toHaveBeenCalled()
   })
 })
+
+function rejectOnAbort(signal: AbortSignal | null | undefined) {
+  return new Promise<never>((_resolve, reject) => {
+    signal?.addEventListener('abort', () => {
+      reject(new Error('aborted'))
+    })
+  })
+}
+
+function stalledBodyResponse(
+  status: number,
+  signal: AbortSignal | null | undefined
+): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'Stalled',
+    json: () => rejectOnAbort(signal),
+    text: () => rejectOnAbort(signal),
+  } as unknown as Response
+}
+
+function expectOriginalText(result: Map<string, string>) {
+  expect(result.get('item1')).toBe('Hello')
+  expect(result.get('item2')).toBe('World')
+}
+
+describe('Translator - Batch timeout', () => {
+  const items: BatchTranslateItem[] = [
+    { id: 'item1', text: 'Hello' },
+    { id: 'item2', text: 'World' },
+  ]
+  let translator: Translator
+  let mockedFetch: jest.MockedFunction<typeof fetch>
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    translator = new Translator('https://example.com/translate')
+    mockedFetch = jest.fn()
+    jest.spyOn(globalThis, 'fetch').mockImplementation(mockedFetch)
+    jest.spyOn(console, 'log').mockImplementation(() => {
+      // no-op
+    })
+    jest.spyOn(console, 'error').mockImplementation(() => {
+      // no-op
+    })
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+    jest.restoreAllMocks()
+  })
+
+  it('should abort the request after the given timeout and fall back to the original text', async () => {
+    mockedFetch.mockImplementation((_url, init) => rejectOnAbort(init?.signal))
+
+    const promise = translator.translateBatch(items, 'en', 'ja', 1000)
+    await jest.advanceTimersByTimeAsync(999)
+    expect(mockedFetch.mock.calls[0][1]?.signal?.aborted).toBe(false)
+    await jest.advanceTimersByTimeAsync(1)
+
+    expectOriginalText(await promise)
+    expect(mockedFetch.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
+  it('should abort when the response body never arrives', async () => {
+    mockedFetch.mockImplementation((_url, init) =>
+      Promise.resolve(stalledBodyResponse(200, init?.signal))
+    )
+
+    const promise = translator.translateBatch(items, 'en', 'ja', 1000)
+    await jest.advanceTimersByTimeAsync(1000)
+
+    expectOriginalText(await promise)
+  })
+
+  it('should abort when the error response body never arrives', async () => {
+    mockedFetch.mockImplementation((_url, init) =>
+      Promise.resolve(stalledBodyResponse(500, init?.signal))
+    )
+
+    const promise = translator.translateBatch(items, 'en', 'ja', 1000)
+    await jest.advanceTimersByTimeAsync(1000)
+
+    expectOriginalText(await promise)
+  })
+
+  it('should default to a 25 second timeout', async () => {
+    mockedFetch.mockImplementation((_url, init) => rejectOnAbort(init?.signal))
+
+    const promise = translator.translateBatch(items, 'en', 'ja')
+    await jest.advanceTimersByTimeAsync(24_999)
+    expect(mockedFetch.mock.calls[0][1]?.signal?.aborted).toBe(false)
+    await jest.advanceTimersByTimeAsync(1)
+
+    expectOriginalText(await promise)
+  })
+
+  it('should not call GAS when the timeout is 0 and fall back to the original text', async () => {
+    const result = await translator.translateBatch(items, 'en', 'ja', 0)
+
+    expect(mockedFetch).not.toHaveBeenCalled()
+    expect(console.error).not.toHaveBeenCalled()
+    expectOriginalText(result)
+  })
+
+  it('should still serve cache hits when the timeout is 0', async () => {
+    translator = new Translator('https://example.com/translate', {
+      enabled: true,
+      ttlMs: 60_000,
+      maxItems: 10,
+    })
+    mockedFetch.mockResolvedValueOnce(
+      mockFetchResponse(200, {
+        status: true,
+        processed: 1,
+        total: 1,
+        executionTime: 1,
+        results: [
+          {
+            id: 'item1',
+            success: true,
+            original: 'Hello',
+            translated: 'こんにちは',
+          },
+        ],
+      })
+    )
+    await translator.translateBatch([items[0]], 'en', 'ja')
+    mockedFetch.mockClear()
+
+    const result = await translator.translateBatch(items, 'en', 'ja', 0)
+
+    expect(mockedFetch).not.toHaveBeenCalled()
+    expect(result.get('item1')).toBe('こんにちは')
+    expect(result.get('item2')).toBe('World')
+  })
+})

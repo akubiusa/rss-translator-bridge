@@ -152,7 +152,7 @@ Every URL is fetched through `src/safe-fetch.ts`, which applies the following to
 The server POSTs JSON to `GAS_URL`.
 The request and response types are defined in `src/types.ts`.
 
-Batch request (used by `/api`; 25 second timeout):
+Batch request (used by `/api`; timeout of at most 25 seconds, see [Deployment](#deployment)):
 
 ```json
 {
@@ -214,7 +214,9 @@ Client -> GET /api -> RSSProcessor -> safeFetchText -> source feed
 
 The repository is set up for Vercel: `vercel.json` routes every path to `api/serverless.ts` and sets `maxDuration` to 30 seconds.
 Set `GAS_URL` (and any other variables) in the Vercel project settings, then deploy with the Vercel CLI (`vercel`).
-The GAS batch timeout (25 seconds) is chosen to fit within that 30 second limit, so very large feeds can still time out.
+Fetching, parsing and translating a feed share a 27 second budget, which leaves 3 seconds of the 30 second limit for building and sending the response.
+The GAS batch timeout is the smaller of 25 seconds and the budget left after the feed fetch, and it also covers reading the response body.
+A very large feed whose translation does not finish in time is still returned, with the untranslated items in their original text.
 
 The in-memory translation cache only lives as long as a function instance.
 

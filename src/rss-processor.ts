@@ -7,7 +7,7 @@ import {
   safeFetchText,
   UnsafeUrlError,
 } from './safe-fetch.js'
-import { Translator } from './translator.js'
+import { BATCH_TIMEOUT_MS, Translator } from './translator.js'
 import {
   RSSFeed,
   RSSItem,
@@ -15,6 +15,12 @@ import {
   BatchTranslateItem,
   TranslationCacheConfig,
 } from './types.js'
+
+/**
+ * Time in milliseconds that fetching, parsing and translating may take together.
+ * It is Vercel's 30 s function limit minus 3 s for building and sending the response.
+ */
+const REQUEST_BUDGET_MS = 27_000
 
 /** Fetches an RSS feed, translates its text with GAS and rebuilds it as RSS 2.0 XML. */
 export class RSSProcessor {
@@ -55,6 +61,7 @@ export class RSSProcessor {
     excludeFeedTitle = true,
     excludeItemTitle = false
   ): Promise<string | null> {
+    const startedAt = Date.now()
     try {
       const body = await safeFetchText(feedUrl)
       const feed = await this.parser.parseString(body)
@@ -89,10 +96,15 @@ export class RSSProcessor {
 
       console.log(`Preparing batch translation for ${batchItems.length} items`)
 
+      const remainingMs = Math.max(
+        REQUEST_BUDGET_MS - (Date.now() - startedAt),
+        0
+      )
       const translations = await this.translator.translateBatch(
         batchItems,
         sourceLang,
-        targetLang
+        targetLang,
+        Math.min(BATCH_TIMEOUT_MS, remainingMs)
       )
 
       if (feed.title && !excludeFeedTitle && translations.has('feed-title')) {

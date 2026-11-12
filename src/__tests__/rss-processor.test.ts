@@ -70,6 +70,44 @@ describe('RSSProcessor', () => {
     mockSafeFetchText.mockResolvedValue('<rss>fetched body</rss>')
   })
 
+  describe('processRSSFeed request budget', () => {
+    afterEach(() => {
+      jest.restoreAllMocks()
+    })
+
+    it.each([
+      { elapsedMs: 0, expectedTimeoutMs: 25_000 },
+      { elapsedMs: 2000, expectedTimeoutMs: 25_000 },
+      { elapsedMs: 5000, expectedTimeoutMs: 22_000 },
+      { elapsedMs: 27_000, expectedTimeoutMs: 0 },
+      { elapsedMs: 40_000, expectedTimeoutMs: 0 },
+    ])(
+      'should give GAS $expectedTimeoutMs ms when $elapsedMs ms have elapsed before translating',
+      async ({ elapsedMs, expectedTimeoutMs }) => {
+        mockParserInstance.parseString.mockResolvedValue(createMockFeed())
+        mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
+        jest
+          .spyOn(Date, 'now')
+          .mockReturnValueOnce(1_000_000)
+          .mockReturnValueOnce(1_000_000 + elapsedMs)
+
+        await rssProcessor.processRSSFeed(
+          'https://example.com/feed.xml',
+          'en',
+          'ja'
+        )
+
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
+          expect.any(Array),
+          'en',
+          'ja',
+          expectedTimeoutMs
+        )
+      }
+    )
+  })
+
   describe('processRSSFeed', () => {
     it('should process RSS feed successfully with translations', async () => {
       mockParserInstance.parseString.mockResolvedValue(createMockFeed())
@@ -114,7 +152,8 @@ describe('RSSProcessor', () => {
           { id: 'item-1-content', text: '<p>Item 2 content encoded</p>' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -142,7 +181,8 @@ describe('RSSProcessor', () => {
       expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
         [{ id: 'feed-description', text: 'Empty Description' }],
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -169,7 +209,8 @@ describe('RSSProcessor', () => {
       expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
         [],
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -201,7 +242,8 @@ describe('RSSProcessor', () => {
           { id: 'item-0-content', text: '<p>Content Encoded</p>' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -237,7 +279,8 @@ describe('RSSProcessor', () => {
           { id: 'item-0-content', text: 'Description Content' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
 
       // XML output should contain translated description
@@ -318,7 +361,8 @@ describe('RSSProcessor', () => {
           { id: 'item-0-content', text: 'Content field text' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -455,7 +499,8 @@ describe('RSSProcessor', () => {
       expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
         expect.not.arrayContaining([{ id: 'feed-title', text: 'Test Feed' }]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -492,7 +537,8 @@ describe('RSSProcessor', () => {
           { id: 'feed-description', text: 'Test Description' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -527,7 +573,8 @@ describe('RSSProcessor', () => {
           { id: 'item-0-title', text: 'Item 1 Title' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockTranslatorInstance.translateBatch).toHaveBeenCalledWith(
@@ -535,7 +582,8 @@ describe('RSSProcessor', () => {
           { id: 'item-1-title', text: 'Item 2 Title' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -572,7 +620,8 @@ describe('RSSProcessor', () => {
           { id: 'item-1-title', text: 'Item 2 Title' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
 
@@ -610,7 +659,8 @@ describe('RSSProcessor', () => {
           { id: 'item-1-title', text: 'Item 2 Title' },
         ]),
         'en',
-        'ja'
+        'ja',
+        expect.any(Number)
       )
     })
   })
