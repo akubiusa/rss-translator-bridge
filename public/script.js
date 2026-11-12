@@ -41,7 +41,9 @@ class RSSTranslator {
       const startDateTime = new Date()
 
       // Fetch the original feed and the translation in parallel
-      const originalRssPromise = this.fetchOriginalRSS(url)
+      const originalRssPromise = this.fetchOriginalRSS(url).catch((error) => {
+        console.warn('Original RSS fetch failed:', error)
+      })
 
       const translatedRssPromise = this.translateRSS(
         url,
@@ -78,36 +80,20 @@ class RSSTranslator {
   }
 
   async fetchOriginalRSS(url) {
-    try {
-      // Go through the server to avoid CORS restrictions
-      const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
-      const response = await fetch(proxyUrl)
+    // Go through the server to avoid CORS restrictions
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
+    const response = await fetch(proxyUrl)
 
-      if (!response.ok) {
-        // If the proxy fails, try fetching directly
-        const directResponse = await fetch(url, { mode: 'cors' })
-        if (!directResponse.ok) {
-          throw new Error('Failed to fetch the original RSS feed')
-        }
-        return await directResponse.text()
+    if (!response.ok) {
+      // If the proxy fails, try fetching directly
+      const directResponse = await fetch(url, { mode: 'cors' })
+      if (!directResponse.ok) {
+        throw new Error('Failed to fetch the original RSS feed')
       }
-
-      return await response.text()
-    } catch (error) {
-      // Fallback: return placeholder XML
-      console.warn('Original RSS fetch failed, using fallback:', error)
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>元のRSSフィード (取得失敗)</title>
-    <description>CORS制限により元のRSSフィードを取得できませんでした</description>
-    <item>
-      <title>サンプル記事</title>
-      <description>元のRSSフィードの内容を表示できません</description>
-    </item>
-  </channel>
-</rss>`
+      return await directResponse.text()
     }
+
+    return await response.text()
   }
 
   async translateRSS(
@@ -185,8 +171,14 @@ class RSSTranslator {
     }
 
     // Show the XML with syntax highlighting
-    document.querySelector('#originalXml').querySelector('code').innerHTML =
-      this.highlightXML(originalXml)
+    const originalCode = document
+      .querySelector('#originalXml')
+      .querySelector('code')
+    if (originalXml === undefined) {
+      originalCode.textContent = '元のRSSフィードを取得できませんでした'
+    } else {
+      originalCode.innerHTML = this.highlightXML(originalXml)
+    }
     document.querySelector('#translatedXml').querySelector('code').innerHTML =
       this.highlightXML(translatedXml)
 
