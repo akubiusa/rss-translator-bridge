@@ -226,4 +226,4 @@ CI (`.github/workflows/ci.yml`) runs lint and tests through a reusable workflow 
 
 ## License
 
-MIT, as declared in `package.json`.
+This project is licensed under the [MIT License](LICENSE).
