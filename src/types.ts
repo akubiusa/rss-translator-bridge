@@ -49,9 +49,15 @@ export interface GASTranslateRequest {
   mode: 'html'
 }
 
-/** Single-text GAS response shape. Unused: `Translator.translate` reads `{ response?: { status?, result? } }` instead. */
+/**
+ * Response of the GAS API for a single text.
+ * Every field is optional because GAS may omit them when the translation fails.
+ */
 export interface GASTranslateResponse {
-  text: string
+  response?: {
+    status?: boolean
+    result?: string
+  }
 }
 
 /** An item to translate in a batch. */

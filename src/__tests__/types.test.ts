@@ -2,6 +2,7 @@ import {
   TranslateRequest,
   TranslateResponse,
   GASTranslateRequest,
+  GASTranslateResponse,
   GASBatchTranslateRequest,
   GASBatchTranslateResponse,
   BatchTranslateItem,
@@ -70,6 +71,33 @@ describe('Type Definitions', () => {
       expect(gasRequest.after).toBe('ja')
       expect(gasRequest.text).toBe('Hello world')
       expect(gasRequest.mode).toBe('html')
+    })
+  })
+
+  describe('GASTranslateResponse', () => {
+    it('should validate the single-text GAS response structure', () => {
+      const gasResponse: GASTranslateResponse = {
+        response: { status: true, result: 'こんにちは' },
+      }
+
+      expect(gasResponse.response?.status).toBe(true)
+      expect(gasResponse.response?.result).toBe('こんにちは')
+    })
+
+    it('should allow every field to be omitted', () => {
+      const empty: GASTranslateResponse = {}
+      const withoutFields: GASTranslateResponse = { response: {} }
+
+      expect(empty.response).toBeUndefined()
+      expect(withoutFields.response?.status).toBeUndefined()
+      expect(withoutFields.response?.result).toBeUndefined()
+    })
+
+    it('should not accept a top-level text field (compile-time check)', () => {
+      // @ts-expect-error `text` is not a property of GASTranslateResponse
+      const invalid: GASTranslateResponse = { text: 'x' }
+
+      expect(invalid).toBeDefined()
     })
   })
 

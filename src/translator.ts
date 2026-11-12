@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   GASTranslateRequest,
+  GASTranslateResponse,
   GASBatchTranslateRequest,
   GASBatchTranslateResponse,
   BatchTranslateItem,
@@ -218,9 +219,7 @@ export class Translator {
 
       // Keep single translations short to stay within the Vercel function limit
       const response = await this.postWithTimeout(request, 5000)
-      const data = (await response.json()) as {
-        response?: { status?: boolean; result?: string }
-      }
+      const data = (await response.json()) as GASTranslateResponse
 
       if (response.status === 200 && data.response?.status) {
         const translated = data.response.result ?? null
