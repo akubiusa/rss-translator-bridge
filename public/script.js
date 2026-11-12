@@ -40,7 +40,8 @@ class RSSTranslator {
       const startTime = performance.now()
       const startDateTime = new Date()
 
-      // Fetch the original feed and the translation in parallel
+      // Fetched in parallel. A failed original fetch must not discard the
+      // translation, so it becomes undefined and showResults shows a notice.
       const originalRssPromise = this.fetchOriginalRSS(url).catch((error) => {
         console.warn('Original RSS fetch failed:', error)
       })
@@ -79,6 +80,10 @@ class RSSTranslator {
     }
   }
 
+  /**
+   * Resolves with the original feed text. Rejects when both the proxy and the
+   * direct fetch respond with an error status, and when either request fails.
+   */
   async fetchOriginalRSS(url) {
     // Go through the server to avoid CORS restrictions
     const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
@@ -153,6 +158,10 @@ class RSSTranslator {
     this.loadingSection.style.display = 'none'
   }
 
+  /**
+   * @param originalXml - The original feed text, or `undefined` when it could
+   * not be fetched
+   */
   showResults(
     originalXml,
     translatedXml,
@@ -170,7 +179,8 @@ class RSSTranslator {
       this.requestUrlInput.value = this.currentRequestUrl
     }
 
-    // Show the XML with syntax highlighting
+    // Highlight the XML; the original pane shows a notice when the original
+    // feed is unavailable
     const originalCode = document
       .querySelector('#originalXml')
       .querySelector('code')

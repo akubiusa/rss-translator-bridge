@@ -1,4 +1,4 @@
 {
-  "ignores": ["@types/jest", "ts-jest"],
+  "ignores": ["@types/jest", "jest-environment-jsdom", "ts-jest"],
   "ignore-patterns": ["dist", "coverage"]
 }
