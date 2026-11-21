@@ -34,7 +34,10 @@ export class RSSProcessor {
   constructor(gasUrl: string, cacheConfig?: TranslationCacheConfig) {
     this.parser = new RSSParser({
       customFields: {
-        item: [['content:encoded', 'contentEncoded']],
+        item: [
+          ['content:encoded', 'contentEncoded'],
+          ['guid', 'guidRaw', { keepArray: true }],
+        ],
       },
     })
     this.translator = new Translator(gasUrl, cacheConfig)
@@ -190,7 +193,7 @@ export class RSSProcessor {
           link: string
           description: string
           pubDate: string
-          guid: string
+          guid: string | { _: string; $: { isPermaLink: string } }
           'content:encoded'?: string
           'dc:creator'?: string
         } = {
@@ -204,6 +207,18 @@ export class RSSProcessor {
             '',
           pubDate: item.pubDate ?? '',
           guid: item.guid ?? item.link ?? '',
+        }
+
+        const rawGuid = item.guidRaw?.[0]
+        if (
+          typeof rawGuid === 'object' &&
+          typeof item.guid === 'string' &&
+          typeof rawGuid.$?.isPermaLink === 'string'
+        ) {
+          rssItem.guid = {
+            _: item.guid,
+            $: { isPermaLink: rawGuid.$.isPermaLink },
+          }
         }
 
         if (item.contentEncoded) {

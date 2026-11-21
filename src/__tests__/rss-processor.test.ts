@@ -70,6 +70,19 @@ describe('RSSProcessor', () => {
     mockSafeFetchText.mockResolvedValue('<rss>fetched body</rss>')
   })
 
+  const processFeedWithItems = async (items: Record<string, unknown>[]) => {
+    mockParserInstance.parseString.mockResolvedValue({
+      title: 'Guid Feed',
+      items,
+    })
+    mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
+    return rssProcessor.processRSSFeed(
+      'https://example.com/feed.xml',
+      'en',
+      'ja'
+    )
+  }
+
   describe('processRSSFeed request budget', () => {
     afterEach(() => {
       jest.restoreAllMocks()
@@ -732,6 +745,97 @@ describe('RSSProcessor', () => {
       expect(result).toContain('<![CDATA[<p>Rich content</p>]]>')
       expect(result).toContain('<dc:creator>')
       expect(result).toContain('<dc:creator>John Doe</dc:creator>')
+    })
+  })
+
+  describe('guid isPermaLink', () => {
+    it('should capture the raw guid element through a parser custom field', () => {
+      mockRSSParser.mockClear()
+
+      const processor = new RSSProcessor('https://example.com/gas')
+
+      expect(processor).toBeInstanceOf(RSSProcessor)
+      expect(mockRSSParser).toHaveBeenCalledWith({
+        customFields: {
+          item: [
+            ['content:encoded', 'contentEncoded'],
+            ['guid', 'guidRaw', { keepArray: true }],
+          ],
+        },
+      })
+    })
+
+    it('should keep isPermaLink="false" on an opaque guid', async () => {
+      const result = await processFeedWithItems([
+        {
+          title: 'Opaque',
+          guid: 'article-1',
+          guidRaw: [{ _: 'article-1', $: { isPermaLink: 'false' } }],
+        },
+      ])
+
+      expect(result).toContain('<guid isPermaLink="false">article-1</guid>')
+    })
+
+    it('should keep isPermaLink="true" on a URL guid', async () => {
+      const result = await processFeedWithItems([
+        {
+          title: 'Permalink',
+          guid: 'https://example.com/a',
+          guidRaw: [{ _: 'https://example.com/a', $: { isPermaLink: 'true' } }],
+        },
+      ])
+
+      expect(result).toContain(
+        '<guid isPermaLink="true">https://example.com/a</guid>'
+      )
+    })
+
+    it('should not add the attribute when the input guid has none', async () => {
+      const result = await processFeedWithItems([
+        { title: 'Plain', guid: 'plain', guidRaw: ['plain'] },
+      ])
+
+      expect(result).toContain('<guid>plain</guid>')
+      expect(result).not.toContain('isPermaLink')
+    })
+
+    it('should not add the attribute when the guid falls back to the link', async () => {
+      const result = await processFeedWithItems([
+        { title: 'No guid', link: 'https://example.com/no-guid' },
+      ])
+
+      expect(result).toContain('<guid>https://example.com/no-guid</guid>')
+      expect(result).not.toContain('isPermaLink')
+    })
+
+    it('should round-trip every guid form through the real parser', async () => {
+      const ActualRSSParser =
+        jest.requireActual<typeof import('rss-parser')>('rss-parser')
+      mockRSSParser.mockImplementation(
+        (options) => new ActualRSSParser(options)
+      )
+      mockSafeFetchText.mockResolvedValue(
+        `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><description>d</description>
+<item><title>a</title><guid isPermaLink="false">article-1</guid></item>
+<item><title>b</title><guid isPermaLink="true">https://example.com/b</guid></item>
+<item><title>c</title><guid>plain</guid></item>
+<item><title>d</title><link>https://example.com/d</link></item>
+</channel></rss>`
+      )
+      mockTranslatorInstance.translateBatch.mockResolvedValue(new Map())
+
+      const result = await new RSSProcessor(
+        'https://example.com/gas'
+      ).processRSSFeed('https://example.com/feed.xml', 'en', 'ja')
+
+      expect(result).toContain('<guid isPermaLink="false">article-1</guid>')
+      expect(result).toContain(
+        '<guid isPermaLink="true">https://example.com/b</guid>'
+      )
+      expect(result).toContain('<guid>plain</guid>')
+      expect(result).toContain('<guid>https://example.com/d</guid>')
+      expect(result?.match(/isPermaLink/g)).toHaveLength(2)
     })
   })
 })

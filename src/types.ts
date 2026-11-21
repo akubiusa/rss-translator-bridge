@@ -83,6 +83,8 @@ export interface RSSItem {
   contentEncoded?: string
   pubDate?: string
   guid?: string
+  /** The raw `<guid>` elements as parsed by rss-parser, which keeps the attributes that `guid` drops. */
+  guidRaw?: (string | { _?: string; $?: { isPermaLink?: string } })[]
   creator?: string
   [key: string]: unknown
 }
@@ -117,7 +119,7 @@ export interface RSSObject {
         link: string
         description: string
         pubDate: string
-        guid: string
+        guid: string | { _: string; $: { isPermaLink: string } }
         'content:encoded'?: string
         'dc:creator'?: string
       }[]
