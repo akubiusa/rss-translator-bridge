@@ -65,6 +65,18 @@ const resolveTo =
     )
   }
 
+const declaration = (encoding: string) =>
+  `<?xml version="1.0" encoding="${encoding}"?>`
+
+const utf16le = (text: string) =>
+  Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')])
+
+const utf16be = (text: string) =>
+  Buffer.concat([
+    Buffer.from([0xfe, 0xff]),
+    Buffer.from(text, 'utf16le').swap16(),
+  ])
+
 describe('safe-fetch', () => {
   let server: http.Server
   let port: number
@@ -77,6 +89,13 @@ describe('safe-fetch', () => {
       isBlockedAddress: allowLoopback,
       ...options,
     })
+
+  const serve = (body: Buffer, contentType = 'application/rss+xml') => {
+    handler = (_request, response) => {
+      response.writeHead(200, { 'Content-Type': contentType })
+      response.end(body)
+    }
+  }
 
   beforeAll(async () => {
     server = http.createServer((request, response) => {
@@ -455,6 +474,83 @@ describe('safe-fetch', () => {
         response.end('日本語')
       }
       await expect(fetchText('/')).resolves.toBe('日本語')
+    })
+
+    describe('charset detection without a usable header charset', () => {
+      it('honors an ISO-8859-1 XML declaration', async () => {
+        const text = `${declaration('ISO-8859-1')}<title>café</title>`
+        serve(Buffer.from(text, 'latin1'))
+        await expect(fetchText('/')).resolves.toBe(text)
+      })
+
+      it('honors a Shift_JIS XML declaration', async () => {
+        serve(
+          Buffer.concat([
+            Buffer.from(`${declaration('Shift_JIS')}<title>`, 'latin1'),
+            Buffer.from([0x93, 0xfa, 0x96, 0x7b, 0x8c, 0xea]),
+            Buffer.from('</title>', 'latin1'),
+          ])
+        )
+        await expect(fetchText('/')).resolves.toBe(
+          `${declaration('Shift_JIS')}<title>日本語</title>`
+        )
+      })
+
+      it('decodes UTF-16LE with a BOM', async () => {
+        serve(utf16le('<title>日本語</title>'))
+        await expect(fetchText('/')).resolves.toBe('<title>日本語</title>')
+      })
+
+      it('decodes UTF-16BE with a BOM', async () => {
+        serve(utf16be('<title>日本語</title>'))
+        await expect(fetchText('/')).resolves.toBe('<title>日本語</title>')
+      })
+
+      it('prefers a BOM over the header charset', async () => {
+        serve(
+          utf16le('<title>日本語</title>'),
+          'application/rss+xml; charset=utf-8'
+        )
+        await expect(fetchText('/')).resolves.toBe('<title>日本語</title>')
+      })
+
+      it('prefers the header charset over the XML declaration', async () => {
+        const text = `${declaration('ISO-8859-1')}<title>café</title>`
+        serve(Buffer.from(text, 'utf8'), 'application/rss+xml; charset=utf-8')
+        await expect(fetchText('/')).resolves.toBe(text)
+      })
+
+      it('ignores a UTF-16 XML declaration on a body without a BOM', async () => {
+        const text = `${declaration('UTF-16')}<title>café</title>`
+        serve(Buffer.from(text, 'utf8'))
+        await expect(fetchText('/')).resolves.toBe(text)
+      })
+
+      it('uses the XML declaration when the header charset is unsupported', async () => {
+        const text = `${declaration('ISO-8859-1')}<title>café</title>`
+        serve(
+          Buffer.from(text, 'latin1'),
+          'application/rss+xml; charset=no-such-charset'
+        )
+        await expect(fetchText('/')).resolves.toBe(text)
+      })
+
+      it('treats an unsupported XML declaration as UTF-8', async () => {
+        const text = `${declaration('no-such-charset')}<title>café</title>`
+        serve(Buffer.from(text, 'utf8'))
+        await expect(fetchText('/')).resolves.toBe(text)
+      })
+
+      it('prefers a UTF-8 BOM over a conflicting header charset', async () => {
+        serve(
+          Buffer.concat([
+            Buffer.from([0xef, 0xbb, 0xbf]),
+            Buffer.from('<title>日本語</title>', 'utf8'),
+          ]),
+          'application/rss+xml; charset=iso-8859-1'
+        )
+        await expect(fetchText('/')).resolves.toBe('<title>日本語</title>')
+      })
     })
 
     it('returns an empty string for a bodiless response with Content-Encoding', async () => {

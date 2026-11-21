@@ -127,30 +127,70 @@ function isIPv4MappedAddress(address: string): boolean {
   return /^\[::ffff:[\da-f]{1,4}(:[\da-f]{1,4})?\]$/.test(normalized)
 }
 
+const XML_DECLARATION_SCAN_BYTES = 256
+
 /**
- * Decodes the body using the `charset` of the Content-Type header.
+ * Decodes with a `TextDecoder` label, or returns `undefined` when the label is unsupported.
  *
- * Falls back to UTF-8 when no charset is given or the label is unsupported.
+ * @param body Decompressed body
+ * @param label Encoding label
+ * @param skipUtf16 Whether to return `undefined` for a UTF-16 label
+ * @returns The decoded body, or `undefined` if the label was not usable
+ * @throws Any `TextDecoder` error other than an unsupported label
+ */
+function decodeWithLabel(
+  body: Buffer,
+  label: string,
+  skipUtf16 = false
+): string | undefined {
+  try {
+    const decoder = new TextDecoder(label)
+    return skipUtf16 && decoder.encoding.startsWith('utf-16')
+      ? undefined
+      : decoder.decode(body)
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code !== 'ERR_ENCODING_NOT_SUPPORTED'
+    ) {
+      throw error
+    }
+    return undefined
+  }
+}
+
+/**
+ * Decodes the body, choosing the encoding in this order: byte-order mark, `charset` of the Content-Type header, `encoding` of the XML declaration, UTF-8.
+ *
+ * An unsupported label falls through to the next source.
+ * A UTF-16 label in the XML declaration is ignored, because the declaration is only readable when the bytes are ASCII-compatible.
  *
  * @param body Decompressed body
  * @param contentType Content-Type header
  * @returns The decoded body
  */
 function decodeBody(body: Buffer, contentType: string | undefined): string {
-  const label = /charset\s*=\s*["']?([^\s"';]+)/i.exec(contentType ?? '')?.[1]
-  if (label) {
-    try {
-      return new TextDecoder(label).decode(body)
-    } catch (error) {
-      // Fall back to UTF-8 only for unsupported labels; rethrow anything else
-      if (
-        (error as NodeJS.ErrnoException).code !== 'ERR_ENCODING_NOT_SUPPORTED'
-      ) {
-        throw error
-      }
-    }
+  if (body[0] === 0xef && body[1] === 0xbb && body[2] === 0xbf) {
+    return new TextDecoder('utf8').decode(body)
   }
-  return new TextDecoder().decode(body)
+  if (body[0] === 0xff && body[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(body)
+  }
+  if (body[0] === 0xfe && body[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(body)
+  }
+
+  const headerLabel = /charset\s*=\s*["']?([^\s"';]+)/i.exec(
+    contentType ?? ''
+  )?.[1]
+  const declaredLabel =
+    /^<\?xml[^>]*?\sencoding\s*=\s*["']([A-Za-z][\w.-]*)["']/.exec(
+      body.subarray(0, XML_DECLARATION_SCAN_BYTES).toString('latin1')
+    )?.[1]
+  return (
+    (headerLabel && decodeWithLabel(body, headerLabel)) ??
+    (declaredLabel && decodeWithLabel(body, declaredLabel, true)) ??
+    new TextDecoder().decode(body)
+  )
 }
 
 /**
@@ -262,7 +302,7 @@ function parseAndValidateUrl(
  *
  * @param url URL to fetch
  * @param options Limits and test overrides
- * @returns The body, decoded with the response charset (UTF-8 by default)
+ * @returns The body, decoded using its byte-order mark, the Content-Type charset or the XML declaration encoding, in that order (UTF-8 by default)
  * @throws {SafeFetchError} For rejected destinations, timeouts, oversized responses, redirect errors, unsupported content encodings and non-2xx responses. Network and decompression errors propagate as they are.
  */
 export function safeFetchText(
