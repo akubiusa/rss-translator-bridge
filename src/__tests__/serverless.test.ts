@@ -18,7 +18,33 @@ jest.mock('../../src/safe-fetch.js', () => ({
   UnsafeUrlError: class UnsafeUrlError extends Error {},
 }))
 
+/** A minimal stand-in for the Fastify instance used by the handler. */
+function createFakeApp(ready: () => Promise<void> = () => Promise.resolve()) {
+  return {
+    ready: jest.fn(ready),
+    close: jest.fn(() => Promise.resolve()),
+    server: { emit: jest.fn() },
+  }
+}
+
+/** Loads a fresh handler module so its cached app starts empty. */
+async function loadHandler() {
+  const handlerModule = await import('../../api/serverless.js')
+  const indexModule = await import('../../src/index.js')
+  return {
+    handler: handlerModule.default,
+    mockGetApp: jest.mocked(indexModule.getApp),
+  }
+}
+
+const call = (handler: Awaited<ReturnType<typeof loadHandler>>['handler']) =>
+  handler({} as never, {} as never)
+
 describe('serverless handler', () => {
+  beforeEach(() => {
+    jest.resetModules()
+  })
+
   it('reuses the app and its translation cache across requests', async () => {
     const mockGetApp = jest.mocked(getApp)
     mockGetApp.mockImplementation(async () => {
@@ -94,5 +120,54 @@ describe('serverless handler', () => {
       })
       gasFetch.mockRestore()
     }
+  })
+
+  describe('initialization', () => {
+    it('shares one initialization between concurrent requests', async () => {
+      const { handler, mockGetApp } = await loadHandler()
+      const app = createFakeApp()
+      mockGetApp.mockResolvedValue(app as never)
+
+      await Promise.all([call(handler), call(handler), call(handler)])
+
+      expect(mockGetApp).toHaveBeenCalledTimes(1)
+      expect(app.ready).toHaveBeenCalledTimes(1)
+      expect(app.server.emit).toHaveBeenCalledTimes(3)
+    })
+
+    it('retries after getApp fails', async () => {
+      const { handler, mockGetApp } = await loadHandler()
+      const app = createFakeApp()
+      mockGetApp
+        .mockRejectedValueOnce(new Error('build failed'))
+        .mockResolvedValueOnce(app as never)
+
+      await expect(call(handler)).rejects.toThrow('build failed')
+      await call(handler)
+      await call(handler)
+
+      expect(mockGetApp).toHaveBeenCalledTimes(2)
+      expect(app.server.emit).toHaveBeenCalledTimes(2)
+    })
+
+    it('closes the app and retries after ready fails', async () => {
+      const { handler, mockGetApp } = await loadHandler()
+      const failing = createFakeApp(() =>
+        Promise.reject(new Error('not ready'))
+      )
+      const healthy = createFakeApp()
+      mockGetApp
+        .mockResolvedValueOnce(failing as never)
+        .mockResolvedValueOnce(healthy as never)
+
+      await expect(call(handler)).rejects.toThrow('not ready')
+      expect(failing.close).toHaveBeenCalledTimes(1)
+      expect(failing.server.emit).not.toHaveBeenCalled()
+
+      await call(handler)
+
+      expect(mockGetApp).toHaveBeenCalledTimes(2)
+      expect(healthy.server.emit).toHaveBeenCalledTimes(1)
+    })
   })
 })
