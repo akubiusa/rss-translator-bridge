@@ -1,0 +1,49 @@
+# Builds the Docker image on pull requests and publishes it to GHCR on merge.
+
+name: Docker
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    types:
+      - opened
+      - synchronize
+    paths:
+      - .github/workflows/docker.yml
+  pull_request_target:
+    branches:
+      - main
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+
+concurrency:
+  # The event name keeps the `pull_request` and `pull_request_target` runs of the same commit apart.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.merged == true && github.base_ref || github.event.pull_request.head.sha }}
+
+jobs:
+  docker-ci:
+    name: Docker CI
+    # Scopes required by the reusable workflow (`contents: write` is for creating the version tag, `actions: read` is for its build-failure check job).
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+      deployments: write
+    uses: book000/templates/.github/workflows/reusable-docker.yml@master
+    with:
+      targets: >-
+        [
+          { imageName: "book000/rss-translator-bridge", context: ".", file: "Dockerfile", packageName: "rss-translator-bridge" }
+        ]
+      platforms: linux/amd64
+      # actions/checkout refuses to check out a fork PR head under `pull_request_target` unless this is true, so enable it for fork PRs only.
+      allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}
+    secrets:
+      DOCKER_USERNAME: ${{ github.actor }}
+      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}

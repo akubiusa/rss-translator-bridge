@@ -106,9 +106,6 @@ dist
 # Docusaurus cache and generated files
 .docusaurus
 
-# Serverless directories
-.serverless/
-
 # FuseBox cache
 .fusebox/
 
@@ -133,9 +130,6 @@ dist
 
 # Finder (MacOS)
 .DS_Store
-
-# Vercel
-.vercel
 
 # Package manager lock files (pnpm only)
 package-lock.json
