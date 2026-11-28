@@ -18,7 +18,7 @@ import {
 
 /**
  * Time in milliseconds that fetching, parsing and translating may take together.
- * It is Vercel's 30 s function limit minus 3 s for building and sending the response.
+ * It leaves 3 s of a 30 s response window for building and sending the response.
  */
 const REQUEST_BUDGET_MS = 27_000
 

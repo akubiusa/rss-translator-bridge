@@ -11,7 +11,7 @@ It also serves a small web UI that shows the original and translated XML.
 - HTML-aware: every text is sent to GAS with `mode: "html"`, so markup in `content:encoded`, `description` and similar fields is handled as HTML.
 - Caching: translations are cached in memory, and translated responses carry a CDN-oriented `Cache-Control` header.
 - SSRF protection: only public `http:`/`https:` destinations are fetched (see [Fetch restrictions](#fetch-restrictions)).
-- Serverless: runs on Vercel through `api/serverless.ts`, and as a plain Node.js server through `src/index.ts`.
+- Docker: ships as a Docker image (see [Deployment](#deployment)), and also runs as a plain Node.js server through `src/index.ts`.
 
 ## Usage
 
@@ -199,7 +199,7 @@ Client -> GET /api -> RSSProcessor -> safeFetchText -> source feed
 
 | File                       | Role                                                                 |
 | -------------------------- | -------------------------------------------------------------------- |
-| `src/index.ts`             | Starts the server and exposes `getApp()`                             |
+| `src/index.ts`             | Starts the server                                                    |
 | `src/app.ts`               | Fastify app, routes and error-to-status mapping                      |
 | `src/safe-fetch.ts`        | SSRF-safe fetch                                                      |
 | `src/rss-processor.ts`     | Feed parsing (`rss-parser`), translation batching and XML rebuilding |
@@ -208,18 +208,27 @@ Client -> GET /api -> RSSProcessor -> safeFetchText -> source feed
 | `src/cache-control.ts`     | `Cache-Control` header builder                                       |
 | `src/config.ts`            | Environment variable loading                                         |
 | `src/types.ts`             | Shared types                                                         |
-| `api/serverless.ts`        | Vercel entry point                                                   |
+| `Dockerfile`               | Multi-stage image that runs `node dist/src/index.js`                 |
 | `public/`                  | Web UI                                                               |
 
 ## Deployment
 
-The repository is set up for Vercel: `vercel.json` routes every path to `api/serverless.ts` and sets `maxDuration` to 30 seconds.
-Set `GAS_URL` (and any other variables) in the Vercel project settings, then deploy with the Vercel CLI (`vercel`).
-Fetching, parsing and translating a feed share a 27 second budget, which leaves 3 seconds of the 30 second limit for building and sending the response.
+The repository is deployed as a Docker image.
+The `Dockerfile` builds the server in two stages; the image listens on port 80 (`PORT=80`) and runs as the `node` user.
+`.github/workflows/docker.yml` builds the image on pull requests and publishes it to GHCR when a pull request is merged.
+
+To build and run it locally, set the required `GAS_URL` (the other variables in [Configuration](#configuration) are optional):
+
+```bash
+docker build -t rss-translator-bridge .
+docker run --rm -p 3000:80 -e GAS_URL=<GAS API URL> rss-translator-bridge
+```
+
+Fetching, parsing and translating a feed share a 27 second budget, which leaves 3 seconds of a 30 second response window for building and sending the response.
 The GAS batch timeout is the smaller of 25 seconds and the budget left after the feed fetch, and it also covers reading the response body.
 A very large feed whose translation does not finish in time is still returned, with the untranslated items in their original text.
 
-The in-memory translation cache only lives as long as a function instance.
+The server is a long-lived process, so the in-memory translation cache lives until the process restarts.
 
 ## Tests
 

@@ -5,6 +5,7 @@
     "moduleResolution": "Node",
     "lib": ["ESNext", "esnext.AsyncIterable"],
     "outDir": "./dist",
+    "rootDir": ".",
     "removeComments": true,
     "esModuleInterop": true,
     "allowJs": false,
@@ -33,5 +34,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "api/**/*"]
+  "include": ["src/**/*"]
 }

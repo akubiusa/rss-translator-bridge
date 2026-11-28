@@ -12,7 +12,7 @@ Guidance for AI coding agents working in this repository.
 ## Overview
 
 A Fastify (TypeScript, ESM) server that translates RSS feeds in batches through a Google Apps Script (GAS) translation API and returns RSS 2.0 XML.
-It is deployed to Vercel as a serverless function.
+It is deployed as a Docker image (see `Dockerfile`) that `.github/workflows/docker.yml` publishes to GHCR.
 See `README.md` for usage, the API, environment variables and the GAS contract.
 
 ## Structure
@@ -24,7 +24,8 @@ See `README.md` for usage, the API, environment variables and the GAS contract.
 - `src/translator.ts`: GAS API client with timeouts, fallback to the original text and the cache.
 - `src/translation-cache.ts`, `src/cache-control.ts`: translation cache and `Cache-Control` header.
 - `src/config.ts`: `loadConfig()`, the single place that reads environment variables. `src/types.ts`: shared types.
-- `api/serverless.ts`: Vercel entry point. `public/`: web UI.
+- `Dockerfile`: multi-stage image that runs `node dist/src/index.js`.
+- `public/`: web UI.
 
 ## Commands
 
@@ -57,7 +58,7 @@ pnpm test -- --coverage
 - Fetch every user-supplied URL with `safeFetchText`; never call `fetch` or `RSSParser.parseURL` on it directly.
   It allows only `http:`/`https:`, rejects internal addresses (validated on the address actually connected to, at every redirect hop), and limits the total time (5 s), decompressed size (5 MiB) and redirects (5).
 - Translation failures must fall back to the original text rather than failing the request or returning empty values.
-- Fetching, parsing and translating a feed share a 27 s per-request budget (Vercel's 30 s `maxDuration` in `vercel.json` minus 3 s for building and sending the response), set by `REQUEST_BUDGET_MS` in `src/rss-processor.ts`.
+- Fetching, parsing and translating a feed share a 27 s per-request budget (a 30 s response window minus 3 s for building and sending the response), set by `REQUEST_BUDGET_MS` in `src/rss-processor.ts`.
   The GAS batch timeout is the smaller of 25 s (`BATCH_TIMEOUT_MS` in `src/translator.ts`) and the budget left after the feed fetch, and it also covers reading the response body.
 - Do not hardcode `GAS_URL` or other secrets or personal data in code, logs or tests.
 
