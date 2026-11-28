@@ -42,6 +42,8 @@ jobs:
           { imageName: "book000/rss-translator-bridge", context: ".", file: "Dockerfile", packageName: "rss-translator-bridge" }
         ]
       platforms: linux/amd64
+      # actions/checkout refuses to check out a fork PR head under `pull_request_target` unless this is true, so enable it for fork PRs only.
+      allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}
     secrets:
       DOCKER_USERNAME: ${{ github.actor }}
       DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
