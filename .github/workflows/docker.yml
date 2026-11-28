@@ -29,8 +29,9 @@ concurrency:
 jobs:
   docker-ci:
     name: Docker CI
-    # Scopes required by the reusable workflow (`contents: write` is for creating the version tag).
+    # Scopes required by the reusable workflow (`contents: write` is for creating the version tag, `actions: read` is for its build-failure check job).
     permissions:
+      actions: read
       contents: write
       packages: write
       deployments: write
