@@ -101,6 +101,7 @@ When the CDN cache is enabled, `/api` success responses carry `Cache-Control: pu
 Translates a feed and returns RSS 2.0 XML (`Content-Type: application/rss+xml; charset=utf-8`).
 
 The output contains `title`, `link`, `description`, `language` and `lastBuildDate` for the channel, and `title`, `link`, `description`, `pubDate` and `guid` for each item.
+The `isPermaLink` attribute of an item's `guid` is kept when the input has it.
 `content:encoded` and `dc:creator` are added to an item only when the source has them.
 Item bodies are taken from the first available of `content:encoded`, `content`, `description` and `summary`, and are translated in place.
 All items are translated; there is no item limit.
